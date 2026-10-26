@@ -1,9 +1,11 @@
-import * as S from './shaders.js?v=1.9.1';
-import * as Orbit from './orbit.js?v=1.9.1';
-import * as Flight from './flight.js?v=1.9.1';
-import {createSurfaceSampler} from './surface.js?v=1.9.1';
-import {cubeSphereData} from './mesh.js?v=1.9.1';
-import {createNoise,normalizeNoiseSettings,MAX_LAYERS,WAVES_PER_BAND} from './noise.js?v=1.9.1';
+import * as S from './shaders.js?v=2.0.0';
+import * as Orbit from './orbit.js?v=2.0.0';
+import {RailwayRenderer} from './rail-render.js?v=2.0.0';
+import {R as PLANET_METERS,unit as railUnit} from './rail.js?v=2.0.0';
+import * as Flight from './flight.js?v=2.0.0';
+import {createSurfaceSampler} from './surface.js?v=2.0.0';
+import {cubeSphereData} from './mesh.js?v=2.0.0';
+import {createNoise,normalizeNoiseSettings,MAX_LAYERS,WAVES_PER_BAND} from './noise.js?v=2.0.0';
 const $=id=>document.getElementById(id);
 const canvas=$('planet');
 const gl=canvas.getContext('webgl2',{antialias:true,alpha:false,powerPreference:'high-performance',depth:true,stencil:false});
@@ -13,11 +15,13 @@ function start(){
 const MAP_W=2048,MAP_H=1024;
 const homeDistance=()=>innerWidth<760?Math.max(3.95,innerHeight/innerWidth*3.2):3.95;
 const state={seed:'42',relief:1.4,sea:0,mode:0,quality:192,noise:normalizeNoiseSettings(),orientation:Orbit.home(),targetOrientation:Orbit.home(),distance:3.95,targetDistance:3.95,dirty:true,busy:false,water:0,max:0,job:0,triangles:0};
-let worker=new Worker('./hydrology.js?v=1.9.1'),mapPixels=null,mesh=null,pixelRatio=Math.min(devicePixelRatio,1.5),vp,cam=[0,0,3.95],lastTime=0;
+let worker=new Worker('./hydrology.js?v=2.0.0'),mapPixels=null,mesh=null,pixelRatio=Math.min(devicePixelRatio,1.5),vp,cam=[0,0,3.95],lastTime=0;
 let sun=[0,0,1],flight=null,surfaceAt=null,lakePixels=null,lakeWidth=MAP_W,lakeHeight=MAP_H;
 const held=new Set();
+const railway={points:[],selecting:false,pending:false,job:0,worker:null,lastPick:0,lastProgress:0};
 const programs={terrain:program(S.terrainVertex,S.terrainFragment),generator:program(S.fullscreenVertex,S.generateFragment),riverAtlas:program(S.riverAtlasVertex,S.riverAtlasFragment)};
 const uniforms=new Map();
+const railwayRenderer=new RailwayRenderer(gl);
 function program(vs,fs){const p=gl.createProgram();for(const [type,source] of [[gl.VERTEX_SHADER,vs],[gl.FRAGMENT_SHADER,fs]]){const s=gl.createShader(type);gl.shaderSource(s,source);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(s));gl.attachShader(p,s);gl.deleteShader(s);}gl.linkProgram(p);if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(p));return p;}
 function loc(p,name){if(!uniforms.has(p))uniforms.set(p,new Map());const m=uniforms.get(p);if(!m.has(name))m.set(name,gl.getUniformLocation(p,name));return m.get(name);}
 function texture(w,h,pixels,filter=gl.LINEAR){const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,filter);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,filter);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,pixels);return t;}
@@ -68,12 +72,12 @@ function makeMesh(positions,indices=null){const vao=gl.createVertexArray(),vbo=g
 function deleteMesh(m){if(!m)return;gl.deleteVertexArray(m.vao);gl.deleteBuffer(m.vbo);if(m.ibo)gl.deleteBuffer(m.ibo);}
 function setQuality(n){deleteMesh(mesh);mesh=cubeSphere(n);state.quality=n;state.triangles=mesh.count/3;refreshSurface();state.dirty=true;}
 setQuality(state.quality);
-function setBusy(b,message=''){state.busy=b;if(b)held.clear();$('generate').disabled=b;$('random-seed').disabled=b;$('flight-toggle').disabled=!surfaceAt||(b&&!flight);$('generation-state').textContent=message;$('generation-state').hidden=!message;}
+function setBusy(b,message=''){state.busy=b;if(b)held.clear();$('generate').disabled=b;$('random-seed').disabled=b;$('rail-toggle').disabled=b||!lakePixels;$('rail-pick').disabled=b||railway.pending;$('rail-replan').disabled=b||railway.points.length<2||railway.pending;$('flight-toggle').disabled=!surfaceAt||(b&&!flight);$('generation-state').textContent=message;$('generation-state').hidden=!message;}
 let noiseTimer, generationQueued=false;
-function generate(){clearTimeout(noiseTimer);if(state.busy){generationQueued=true;return;}generationQueued=false;state.noise=normalizeNoiseSettings({frequency:$('frequency').value,color:$('noise-color').value,layers:$('layers').value});state.seed=$('seed').value.trim()||'42';$('seed').value=state.seed;const url=new URL(location.href);url.searchParams.set('seed',state.seed);url.searchParams.set('frequency',state.noise.frequency);url.searchParams.set('color',state.noise.color);url.searchParams.set('layers',state.noise.layers);history.replaceState(null,'',url);setBusy(true,'Generating terrain…');$('loading').hidden=false;$('loading').style.opacity='1';$('loading-message').textContent='Generating terrain…';
+function generate(){clearTimeout(noiseTimer);if(state.busy){generationQueued=true;return;}generationQueued=false;resetRailway();state.noise=normalizeNoiseSettings({frequency:$('frequency').value,color:$('noise-color').value,layers:$('layers').value});state.seed=$('seed').value.trim()||'42';$('seed').value=state.seed;const url=new URL(location.href);url.searchParams.set('seed',state.seed);url.searchParams.set('frequency',state.noise.frequency);url.searchParams.set('color',state.noise.color);url.searchParams.set('layers',state.noise.layers);history.replaceState(null,'',url);setBusy(true,'Generating terrain…');$('loading').hidden=false;$('loading').style.opacity='1';$('loading-message').textContent='Generating terrain…';
 // Yield a paint before the single GPU generation pass and its one-time readback.
 requestAnimationFrame(()=>requestAnimationFrame(()=>{try{gl.bindFramebuffer(gl.FRAMEBUFFER,framebuffer);gl.viewport(0,0,MAP_W,MAP_H);gl.disable(gl.DEPTH_TEST);gl.useProgram(programs.generator);const spectrum=createNoise(state.seed,state.noise);gl.uniform1fv(loc(programs.generator,'bandAmplitudes[0]'),spectrum.amplitudes);gl.activeTexture(gl.TEXTURE4);gl.bindTexture(gl.TEXTURE_2D,waveTexture);gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,WAVES_PER_BAND,MAX_LAYERS,gl.RGBA,gl.FLOAT,spectrum.terrain);gl.uniform1i(loc(programs.generator,'terrainWaves'),4);gl.uniform1i(loc(programs.generator,'noiseLayers'),state.noise.layers);gl.uniform4fv(loc(programs.generator,'moistureWaves[0]'),spectrum.moisture);gl.bindVertexArray(emptyVAO);gl.drawArrays(gl.TRIANGLES,0,3);const pixels=new Uint8Array(MAP_W*MAP_H*4);gl.readPixels(0,0,MAP_W,MAP_H,gl.RGBA,gl.UNSIGNED_BYTE,pixels);mapPixels=pixels;refreshSurface();gl.bindFramebuffer(gl.FRAMEBUFFER,null);drain();state.dirty=true;}catch(e){setBusy(false,'Generation failed. Try another world.');showError(e.message);}}));}
-function drain(){if(!mapPixels)return;setBusy(true,'Calculating rivers and lakes…');$('loading-message').textContent='Calculating rivers and lakes…';const copy=mapPixels.slice();const id=++state.job;worker.postMessage({pixels:copy.buffer,width:MAP_W,height:MAP_H,sea:state.sea,id},[copy.buffer]);}
+function drain(){if(!mapPixels)return;resetRailway();setBusy(true,'Calculating rivers and lakes…');$('loading-message').textContent='Calculating rivers and lakes…';const copy=mapPixels.slice();const id=++state.job;worker.postMessage({pixels:copy.buffer,width:MAP_W,height:MAP_H,sea:state.sea,id},[copy.buffer]);}
 worker.onmessage=({data})=>{if(data.id!==state.job)return;gl.deleteTexture(drainageTexture);lakePixels=new Uint8Array(data.lakes);lakeWidth=data.width;lakeHeight=data.height;drainageTexture=texture(data.width,data.height,lakePixels);bakeRivers(new Float32Array(data.rivers),data.feather);state.water=data.water;state.max=data.max;refreshSurface();setBusy(false);$('loading').style.opacity='0';setTimeout(()=>{if(!state.busy)$('loading').hidden=true;},450);state.dirty=true;console.info('World ready '+JSON.stringify({seed:state.seed,frequency:state.noise.frequency,noiseColor:state.noise.color,layers:state.noise.layers,heightSamples:MAP_W*MAP_H,triangles:state.triangles,riverSegments:data.segments,curvedPaths:data.pathCount,curveSamples:data.curveSamples,drainageSamples:data.width*data.height,riverAtlas:ATLAS_W,lakeCells:data.lakeCells}));if(generationQueued)generate();};
 worker.onerror=e=>{console.error(e);setBusy(false,'Drainage could not finish. Generate to retry.');$('loading').hidden=true;};
 function refreshSurface(){
@@ -119,9 +123,9 @@ function cameraMatrix(){
   }
   return multiply(projection,view);
 }
-function bindSurface(p){gl.useProgram(p);gl.uniformMatrix4fv(loc(p,'viewProjection'),false,vp);gl.uniform3fv(loc(p,'camera'),cam);gl.uniform3fv(loc(p,'sun'),sun);gl.uniform1f(loc(p,'sea'),state.sea);gl.uniform1f(loc(p,'relief'),state.relief);gl.uniform1i(loc(p,'mode'),state.mode);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,terrainTexture);gl.uniform1i(loc(p,'terrain'),0);gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,drainageTexture);gl.uniform1i(loc(p,'drainage'),1);gl.activeTexture(gl.TEXTURE2);gl.bindTexture(gl.TEXTURE_2D,riverMaskTexture);gl.uniform1i(loc(p,'riverMask'),2);gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,slopeTexture);gl.uniform1i(loc(p,'slopeMap'),3);}
+function bindSurface(p){gl.useProgram(p);gl.uniformMatrix4fv(loc(p,'viewProjection'),false,vp);gl.uniform3fv(loc(p,'camera'),cam);gl.uniform3fv(loc(p,'sun'),sun);gl.uniform1f(loc(p,'sea'),state.sea);gl.uniform1f(loc(p,'relief'),state.relief);gl.uniform1i(loc(p,'mode'),state.mode);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,terrainTexture);gl.uniform1i(loc(p,'terrain'),0);gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,drainageTexture);gl.uniform1i(loc(p,'drainage'),1);gl.activeTexture(gl.TEXTURE2);gl.bindTexture(gl.TEXTURE_2D,riverMaskTexture);gl.uniform1i(loc(p,'riverMask'),2);gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,slopeTexture);gl.uniform1i(loc(p,'slopeMap'),3);railwayRenderer.bindTerrain(p,loc);}
 function resize(){const w=Math.round(innerWidth*pixelRatio),h=Math.round(innerHeight*pixelRatio);if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;state.dirty=true;}}
-function draw(){resize();vp=cameraMatrix();gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,canvas.width,canvas.height);gl.clearColor(17/255,25/255,27/255,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.disable(gl.BLEND);bindSurface(programs.terrain);gl.bindVertexArray(mesh.vao);gl.drawElements(gl.TRIANGLES,mesh.count,gl.UNSIGNED_INT,0);gl.bindVertexArray(null);}
+function draw(){resize();vp=cameraMatrix();gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,canvas.width,canvas.height);gl.clearColor(17/255,25/255,27/255,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.disable(gl.BLEND);bindSurface(programs.terrain);gl.bindVertexArray(mesh.vao);gl.drawElements(gl.TRIANGLES,mesh.count,gl.UNSIGNED_INT,0);railwayRenderer.draw(vp,cam,sun,canvas);gl.bindVertexArray(null);}
 function tick(now){
   requestAnimationFrame(tick);if(document.hidden){lastTime=now;return;}
   const dt=Math.min(Math.max(0,(now-lastTime)/1000),.05),amount=Math.min(1,dt*12);
@@ -137,16 +141,18 @@ function tick(now){
   }
   if(state.dirty||moving){draw();state.dirty=false;}lastTime=now;
 }
-const pointers=new Map();let pinchDistance=0;
-canvas.addEventListener('pointerdown',e=>{canvas.focus({preventScroll:true});canvas.setPointerCapture(e.pointerId);pointers.set(e.pointerId,[e.clientX,e.clientY]);if(pointers.size===2){const [a,b]=[...pointers.values()];pinchDistance=Math.hypot(a[0]-b[0],a[1]-b[1]);}});
+const pointers=new Map();let pinchDistance=0,pickGesture=null;
+canvas.addEventListener('pointerdown',e=>{canvas.focus({preventScroll:true});canvas.setPointerCapture(e.pointerId);pointers.set(e.pointerId,[e.clientX,e.clientY]);pickGesture={x:e.clientX,y:e.clientY,dragged:pointers.size>1};if(pointers.size===2){const [a,b]=[...pointers.values()];pinchDistance=Math.hypot(a[0]-b[0],a[1]-b[1]);}});
 canvas.addEventListener('pointermove',e=>{
   if(!pointers.has(e.pointerId))return;
+  if(pickGesture&&Math.hypot(e.clientX-pickGesture.x,e.clientY-pickGesture.y)>6)pickGesture.dragged=true;
   const previous=pointers.get(e.pointerId);pointers.set(e.pointerId,[e.clientX,e.clientY]);
+  if(railway.selecting&&pickGesture&&!pickGesture.dragged)return;
   if(pointers.size===2){const [a,b]=[...pointers.values()],d=Math.hypot(a[0]-b[0],a[1]-b[1]);if(pinchDistance>0&&d>0)zoom(pinchDistance/d);pinchDistance=d;}
   else if(flight){Flight.look(flight,-(e.clientX-previous[0])*.0045,-(e.clientY-previous[1])*.0045);state.dirty=true;}
   else{state.targetOrientation=Orbit.turn(state.targetOrientation,e.clientX-previous[0],e.clientY-previous[1]);state.dirty=true;}
 });
-for(const type of ['pointerup','pointercancel','lostpointercapture'])canvas.addEventListener(type,e=>{pointers.delete(e.pointerId);pinchDistance=0;});
+for(const type of ['pointerup','pointercancel','lostpointercapture'])canvas.addEventListener(type,e=>{if(type==='pointerup'&&pickGesture&&!pickGesture.dragged&&pointers.size===1&&e.button===0)pickRailwayPoint(e);pointers.delete(e.pointerId);pinchDistance=0;pickGesture=null;});
 function changeHeight(delta){flight.radius+=delta;Flight.constrain(flight,surfaceAt);state.dirty=true;}
 function zoom(factor){
   if(flight){changeHeight(Math.log(factor)*.12);return;}
@@ -155,7 +161,7 @@ function zoom(factor){
 canvas.addEventListener('wheel',e=>{e.preventDefault();zoom(Math.exp(Math.max(-120,Math.min(120,e.deltaY))*.0016));},{passive:false});
 // Center a picked location without discarding the camera's current roll.
 canvas.addEventListener('dblclick',e=>{
-  if(flight)return;
+  if(flight||railway.selecting||performance.now()-railway.lastPick<500)return;
   const aspect=canvas.width/canvas.height,f=1/Math.tan(43*Math.PI/360),shift=innerWidth>760?.18:0,yshift=innerWidth>760?-.015:.15;
   const px=((e.clientX/innerWidth*2-1)-shift)*aspect/f,py=((1-e.clientY/innerHeight*2)-yshift)/f;
   const {right,up,outward}=Orbit.frame(state.orientation);
@@ -171,7 +177,7 @@ $('flight-toggle').onclick=toggleFlight;
 const flightKeys=new Set(['KeyW','KeyS','KeyA','KeyD','KeyQ','KeyE']);
 window.addEventListener('keydown',e=>{
   if(e.ctrlKey||e.metaKey||e.altKey||e.target.isContentEditable||['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName))return;
-  if(e.key==='Escape'){$('help').hidden=true;if(flight)toggleFlight();e.preventDefault();return;}
+  if(e.key==='Escape'){if(railway.pending){cancelRailway();e.preventDefault();return;}if(railway.selecting){railway.selecting=false;document.body.classList.remove('picking');$('rail-status').textContent='Point selection stopped.';e.preventDefault();return;}$('help').hidden=true;if(flight)toggleFlight();e.preventDefault();return;}
   if(flight&&flightKeys.has(e.code)){e.preventDefault();if(!state.busy)held.add(e.code);return;}
   const actions={'+':$('zoom-in').onclick,'=':$('zoom-in').onclick,'-':$('zoom-out').onclick};
   if(!flight)Object.assign(actions,{ArrowLeft:()=>state.targetOrientation=Orbit.turn(state.targetOrientation,-20,0),ArrowRight:()=>state.targetOrientation=Orbit.turn(state.targetOrientation,20,0),ArrowUp:()=>state.targetOrientation=Orbit.turn(state.targetOrientation,0,-20),ArrowDown:()=>state.targetOrientation=Orbit.turn(state.targetOrientation,0,20)});
@@ -182,17 +188,90 @@ function releaseControls(){held.clear();pointers.clear();pinchDistance=0;}
 window.addEventListener('blur',releaseControls);
 document.addEventListener('visibilitychange',releaseControls);
 document.addEventListener('focusin',e=>{if(e.target!==canvas)held.clear();});
+function railParameters(){return {speed:+$('rail-speed').value,maxGrade:+$('rail-grade').value/100,minRadius:+$('rail-radius').value,maxEarthwork:+$('rail-earthwork').value,earthworkCost:+$('rail-cost').value*.005,timeWeight:+$('rail-time').value};}
+function resetRailway(message='Choose endpoints to start a new route.'){
+  railway.job++;railway.worker?.terminate();railway.worker=null;railway.points=[];railway.selecting=false;railway.pending=false;
+  railwayRenderer.clear();railwayRenderer.setMarkers([],surfaceAt);document.body.classList.remove('picking');
+  $('rail-status').textContent=message;$('rail-endpoints').hidden=true;$('rail-stats').hidden=true;$('rail-replan').disabled=true;$('rail-cancel').hidden=true;$('rail-pick').disabled=false;state.dirty=true;
+}
+function cancelRailway(){railway.job++;railway.worker?.postMessage({type:'cancel'});railway.pending=false;$('rail-cancel').hidden=true;$('rail-pick').disabled=false;$('rail-replan').disabled=railway.points.length<2;$('rail-status').textContent='Search cancelled.';}
+function chooseRailwayPoints(){
+  if(state.busy||!lakePixels)return;
+  cancelRailway();railway.points=[];railwayRenderer.clear();railwayRenderer.setMarkers([],surfaceAt);railway.selecting=true;
+  document.body.classList.add('picking');$('rail-stats').hidden=true;$('rail-endpoints').hidden=true;$('rail-replan').disabled=true;$('rail-status').textContent='Click the starting point on land.';state.dirty=true;
+}
+function ensureRailwayWorker(){
+  if(railway.worker)return railway.worker;
+  const w=new Worker('./rail-worker.js?v=2.0.0',{type:'module'}),terrain=mapPixels.slice(),lakes=lakePixels.slice();railway.worker=w;
+  w.postMessage({type:'init',terrain:terrain.buffer,lakes:lakes.buffer,config:{width:MAP_W,height:MAP_H,lakeWidth,lakeHeight,sea:state.sea,relief:state.relief,detail:state.quality}},[terrain.buffer,lakes.buffer]);
+  w.onmessage=({data})=>{
+    if(data.id!==railway.job)return;
+    if(data.type==='progress'){if(performance.now()-railway.lastProgress>200){$('rail-status').textContent=data.stage+': '+data.expanded.toLocaleString()+' states.';railway.lastProgress=performance.now();}return;}
+    railway.pending=false;$('rail-cancel').hidden=true;$('rail-pick').disabled=false;$('rail-replan').disabled=false;
+    const r=data.result;
+    if(r.error){$('rail-status').textContent=r.error;return;}
+    try{railwayRenderer.setRoute(r,surfaceAt);}catch(error){$('rail-status').textContent=error.message;state.dirty=true;return;}
+    const minRadius=Number.isFinite(r.minRadius)&&r.minRadius<1e8?Math.round(r.minRadius).toLocaleString()+' m':'Straight';
+    const values=[['Distance',(r.length/1000).toFixed(2)+' km'],['Journey time',(r.seconds/60).toFixed(1)+' min'],['Maximum grade',(r.maxGrade*100).toFixed(2)+'%'],['Minimum radius',minRadius],['Earthwork',Math.round(r.volume).toLocaleString()+' m³'],['Largest cut/fill',r.maxWork.toFixed(1)+' m']];
+    $('rail-stats').replaceChildren();for(const[name,value]of values){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=name;dd.textContent=value;$('rail-stats').append(dt,dd);}$('rail-stats').hidden=false;
+    $('rail-status').textContent='Approximate route · '+r.alternatives+' feasible alternatives · '+(r.milliseconds/1000).toFixed(1)+' s search.';state.dirty=true;
+    console.info('Railway ready '+JSON.stringify({length:r.length,seconds:r.seconds,maxGrade:r.maxGrade,minRadius:r.minRadius,maxWork:r.maxWork,volume:r.volume,alternatives:r.alternatives,expanded:r.expanded}));
+  };
+  w.onerror=()=>{railway.pending=false;$('rail-cancel').hidden=true;$('rail-pick').disabled=false;$('rail-replan').disabled=false;$('rail-status').textContent='Routing failed. Replan to retry.';w.terminate();railway.worker=null;};
+  return w;
+}
+function updateRailEndpointSummary(){
+  if(!railway.points.length){$('rail-endpoints').hidden=true;return;}
+  const heights=railway.points.map(n=>(surfaceAt.rendered(n)-1)*PLANET_METERS);let text='Elevation: '+heights.map(h=>Math.round(h).toLocaleString()+' m').join(' → ');
+  if(heights.length===2){const minimum=Math.abs(heights[1]-heights[0])/railParameters().maxGrade/1000;const a=railway.points[0],b=railway.points[1],angle=Math.acos(Math.min(1,a.reduce((s,v,i)=>s+v*b[i],0)));if(minimum>angle*PLANET_METERS/1000*1.5)text+=' · at least '+minimum.toFixed(1)+' km needed for this elevation change.';}
+  $('rail-endpoints').textContent=text;$('rail-endpoints').hidden=false;
+}
+function planRailway(){
+  if(railway.points.length!==2||state.busy)return;
+  railway.selecting=false;document.body.classList.remove('picking');railwayRenderer.clear();$('rail-stats').hidden=true;railway.pending=true;
+  $('rail-replan').disabled=true;$('rail-pick').disabled=true;$('rail-cancel').hidden=false;$('rail-status').textContent='Searching land routes…';
+  console.info('Railway endpoints '+JSON.stringify({start:railway.points[0],end:railway.points[1],startHeight:(surfaceAt.rendered(railway.points[0])-1)*PLANET_METERS,endHeight:(surfaceAt.rendered(railway.points[1])-1)*PLANET_METERS}));
+  ensureRailwayWorker().postMessage({type:'plan',id:++railway.job,start:railway.points[0],end:railway.points[1],parameters:railParameters()});state.dirty=true;
+}
+function pickSurface(clientX,clientY){
+  const axes=flight?Flight.frame(flight):Orbit.frame(state.orientation),origin=flight?axes.position:axes.outward.map(x=>x*state.distance),f=1/Math.tan((flight?60:43)*Math.PI/360);
+  const shift=!flight&&innerWidth>760?.18:0,yshift=flight?0:innerWidth>760?-.015:.15;
+  const px=((clientX/innerWidth*2-1)-shift)*(canvas.width/canvas.height)/f,py=((1-clientY/innerHeight*2)-yshift)/f;
+  const dir=railUnit(axes.outward.map((x,i)=>-x+axes.right[i]*px+axes.up[i]*py)),dot=(a,b)=>a.reduce((s,v,i)=>s+v*b[i],0),bound=1+Math.max(state.max,state.sea)*state.relief+.005;
+  const b=dot(origin,dir),disc=b*b-dot(origin,origin)+bound*bound;if(disc<0)return null;
+  let t=Math.max(0,-b-Math.sqrt(disc)),previous=t;const end=-b+Math.sqrt(disc);
+  for(let i=0;i<6000&&t<end;i++){
+    const point=origin.map((x,k)=>x+dir[k]*t),r=Math.hypot(...point),n=point.map(x=>x/r),gap=r-surfaceAt.rendered(n);
+    if(gap<=0){let lo=previous,hi=t;for(let j=0;j<24;j++){const mid=(lo+hi)/2,p=origin.map((x,k)=>x+dir[k]*mid),radius=Math.hypot(...p),n=p.map(x=>x/radius);if(radius>surfaceAt.rendered(n))lo=mid;else hi=mid;}return railUnit(origin.map((x,k)=>x+dir[k]*(lo+hi)/2));}
+    previous=t;t+=Math.max(.00005,Math.min(.004,gap*.05));
+  }
+  return null;
+}
+function pickRailwayPoint(event){
+  if(!railway.selecting||state.busy)return;
+  const n=pickSurface(event.clientX,event.clientY);railway.lastPick=performance.now();
+  if(!n){$('rail-status').textContent='Click the planet to choose a point.';return;}
+  if(!surfaceAt.fields(n).land){$('rail-status').textContent='Choose a land point. Oceans and lakes are blocked.';return;}
+  railway.points.push(n);updateRailEndpointSummary();railwayRenderer.setMarkers(railway.points,surfaceAt);state.dirty=true;
+  if(railway.points.length===1)$('rail-status').textContent='Click the destination on land.';else planRailway();
+}
+$('rail-toggle').onclick=()=>{const open=$('rail-toggle').getAttribute('aria-expanded')==='true';$('rail-toggle').setAttribute('aria-expanded',!open);$('rail-body').hidden=open;if(open){railway.selecting=false;document.body.classList.remove('picking');}else if(!railway.points.length)chooseRailwayPoints();else if(railway.points.length===1){railway.selecting=true;document.body.classList.add('picking');$('rail-status').textContent='Click the destination on land.';}};
+$('rail-pick').onclick=chooseRailwayPoints;$('rail-replan').onclick=planRailway;$('rail-clear').onclick=()=>{resetRailway();chooseRailwayPoints();};$('rail-cancel').onclick=cancelRailway;
+for(const[id,format]of[['rail-speed',v=>v+' km/h'],['rail-grade',v=>(+v).toFixed(1)+'%'],['rail-radius',v=>v+' m'],['rail-earthwork',v=>v+' m'],['rail-cost',v=>v],['rail-time',v=>(+v).toFixed(1)]]){
+  $(id).oninput=()=>{$(id+'-value').value=format($(id).value);rangeFill($(id));updateRailEndpointSummary();};
+  $(id).onchange=()=>{if(railway.pending)cancelRailway();if(railway.points.length===2)$('rail-status').textContent='Parameters changed. Replan to apply.';};rangeFill($(id));
+}
 $('generate').onclick=generate;$('seed').addEventListener('keydown',e=>{if(e.key==='Enter')generate();});
 $('random-seed').onclick=()=>{if(state.busy)return;const a=new Uint32Array(1);crypto.getRandomValues(a);$('seed').value=String(a[0]%1000000);generate();};
-$('relief').oninput=e=>{state.relief=+e.target.value;$('relief-value').value=state.relief.toFixed(1)+'×';rangeFill(e.target);refreshSurface();state.dirty=true;};
-let seaTimer;$('sea').oninput=e=>{state.sea=+e.target.value;$('sea-value').value=(state.sea>0?'+':'')+Math.round(state.sea*65000)+' m';rangeFill(e.target);refreshSurface();state.dirty=true;clearTimeout(seaTimer);seaTimer=setTimeout(()=>{drain();},230);};
+$('relief').oninput=e=>{resetRailway('Terrain changed. Choose endpoints again.');state.relief=+e.target.value;$('relief-value').value=state.relief.toFixed(1)+'×';rangeFill(e.target);refreshSurface();state.dirty=true;};
+let seaTimer;$('sea').oninput=e=>{resetRailway('Terrain changed. Choose endpoints again.');state.sea=+e.target.value;$('sea-value').value=(state.sea>0?'+':'')+Math.round(state.sea*65000)+' m';rangeFill(e.target);refreshSurface();state.dirty=true;clearTimeout(seaTimer);seaTimer=setTimeout(()=>{drain();},230);};
 function rangeFill(e){e.style.background=`linear-gradient(to right,#a7c299 ${(e.value-e.min)/(e.max-e.min)*100}%,#3b4840 0)`;}
 for(const id of ['relief','sea','frequency','noise-color','layers'])rangeFill($(id));
 for(const id of ['frequency','noise-color','layers']){
   $(id).oninput=()=>{$(id+'-value').value=Number($(id).value).toFixed(id==='layers'?0:2)+(id==='frequency'?'×':'');rangeFill($(id));};
   $(id).onchange=()=>{clearTimeout(noiseTimer);noiseTimer=setTimeout(generate,240);};
 }
-$('quality').onchange=e=>setQuality(+e.target.value);
+$('quality').onchange=e=>{resetRailway('Mesh changed. Choose endpoints again.');setQuality(+e.target.value);};
 $('settings-toggle').onclick=()=>{const open=$('settings-toggle').getAttribute('aria-expanded')==='true';$('settings-toggle').setAttribute('aria-expanded',!open);$('settings-body').hidden=open;};
 $('help-toggle').onclick=()=>{$('help').hidden=!$('help').hidden;};
 $('fullscreen').onclick=async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();}catch{setBusy(state.busy,'Fullscreen is not available in this browser view.');}};

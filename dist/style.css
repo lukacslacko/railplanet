@@ -78,3 +78,20 @@ input[type=range]::-moz-range-thumb{background:#c2d7b5;width:8px;height:8px;bord
 .seed-panel .seed-row{margin-bottom:12px}
 .seed-input button:disabled{opacity:.45;cursor:wait}
 @media(max-width:760px){.seed-panel{padding:14px 15px;background:#182324ed}}
+
+.rail-panel{flex-shrink:1}
+#rail-body{min-height:0;overflow:auto;padding:0 16px 14px;scrollbar-width:thin;overscroll-behavior:contain}
+#rail-status{font-size:11px;line-height:1.6;margin:3px 0 12px;color:#c2d1bb}
+.rail-actions{display:flex;flex-wrap:wrap;gap:6px}
+.rail-actions button{background:#293833;border:1px solid #ffffff20;border-radius:5px;padding:7px 8px;font-size:10px}
+.rail-actions button:hover{background:#3a4d41}
+.rail-actions button:disabled{opacity:.4;cursor:default}
+#rail-stats{display:grid;grid-template-columns:1fr auto;gap:7px;font-size:10px;color:#acbca6;margin:15px 0}
+#rail-stats dt,#rail-stats dd{margin:0}
+#rail-stats dd{font-variant-numeric:tabular-nums;color:#e0ead9;text-align:right}
+.rail-options{font-size:11px;margin-top:14px;color:#b8c7b0}
+.rail-options summary{cursor:pointer;padding:4px 0}
+.rail-options .setting-hint{margin-top:12px}
+.rail-key{margin:14px 0 0}
+body.picking #planet{cursor:crosshair}
+.panel-title:disabled{opacity:.5;cursor:wait}

@@ -1,4 +1,4 @@
-import {MAX_LAYERS, WAVES_PER_BAND, MOISTURE_WAVES, ELEVATION_GAIN, ELEVATION_OFFSET} from './noise.js?v=1.9.1';
+import {MAX_LAYERS, WAVES_PER_BAND, MOISTURE_WAVES, ELEVATION_GAIN, ELEVATION_OFFSET} from './noise.js?v=2.0.0';
 // Original GLSL, independent of terrain3d. Coordinates stay on a sphere, avoiding terrain seams.
 export const fullscreenVertex = `#version 300 es
 precision highp float;
@@ -99,7 +99,31 @@ uniform vec3 sun;
 uniform int mode;
 uniform sampler2D riverMask;
 uniform sampler2D slopeMap;
+precision highp usampler2D;
+uniform bool hasRail;
+uniform highp usampler2D railBins;
+uniform sampler2D railData;
 ${surfaceCommon}
+
+// Spatial bins contain up to four short ranges of nearby route segments.
+// Remove only the construction footprint; an explicit bed and banks close it.
+bool railwayFootprint(vec3 n){
+  if(!hasRail)return false;
+  ivec2 size=textureSize(railBins,0),cell=clamp(ivec2(coord(n)*vec2(size)),ivec2(0),size-1);
+  uvec4 ranges=texelFetch(railBins,cell,0);int dataWidth=textureSize(railData,0).x;
+  for(int r=0;r<4;r++){
+    uint packed=ranges[r];int start=int(packed>>8),count=int(packed&255u);
+    for(int j=0;j<64;j++){
+      if(j>=count)break;int index=start+j;
+      vec4 a=texelFetch(railData,ivec2(index%dataWidth,index/dataWidth),0);
+      vec4 b=texelFetch(railData,ivec2((index+1)%dataWidth,(index+1)/dataWidth),0);
+      vec3 d=b.xyz-a.xyz;float t=clamp(dot(n-a.xyz,d)/max(dot(d,d),1e-14),0.0,1.0);
+      vec3 center=normalize(mix(a.xyz,b.xyz,t));
+      if(distance(n,center)<mix(a.w,b.w,t)*.999)return true;
+    }
+  }
+  return false;
+}
 
 // Interpolated analytic derivatives give smooth normals at every mesh detail.
 // No triangle normals or finite differences of quantized heights are used.
@@ -145,6 +169,7 @@ vec3 displayColor(vec3 linear){
 float snowCover(float altitude){return smoothstep(.0745,.0775,altitude);}
 void main(){
   vec3 n=normalize(radial);
+  if(railwayFootprint(n))discard;
   vec4 f=fields(n);
   float h=f.x;
   float altitude=max(0.0,h-sea);
