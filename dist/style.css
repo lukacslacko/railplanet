@@ -8,7 +8,6 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 svg{fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
 #planet{position:fixed;inset:0;width:100%;height:100%;touch-action:none;cursor:grab;outline:none}
 #planet:active{cursor:grabbing}
-.vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at 59% 48%,transparent 34%,#0a10122b 85%)}
 header{position:fixed;right:22px;top:22px}
 .header-actions{display:flex;gap:10px}
 .icon-button{display:flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:50%;background:#1b2427b3;width:36px;height:36px;color:#a2afa8;transition:.2s}
@@ -48,17 +47,6 @@ input[type=range]::-moz-range-thumb{background:#c2d7b5;width:8px;height:8px;bord
 .generate:disabled{opacity:.5;cursor:wait}
 .generate svg{width:15px;height:15px}
 .generation-state{flex:none;margin-top:12px;font-size:10px;color:#a2b49f;line-height:1.5}
-.view-controls{position:fixed;left:59%;bottom:22px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;border:1px solid #b8ccb519;border-radius:40px;background:#1a2427e6;backdrop-filter:blur(20px);padding:7px 9px;box-shadow:0 8px 26px #0002}
-.view-switch{display:flex;gap:2px}
-.view-switch button{border:0;background:none;color:#9caf9f;font-size:11px;padding:10px 17px;border-radius:30px;transition:.2s}
-.view-switch button.active{background:#d5e1c914;color:#d2dfc8}
-.view-switch button:hover{color:#e2eadc}
-.control-divider{width:1px;height:18px;background:#ffffff12}
-.orbit-button{display:flex;align-items:center;gap:6px;font-size:11px;white-space:nowrap;border:0;background:none;color:#a2b49f;padding:6px 2px}
-.orbit-button svg{width:16px;height:16px}
-.orbit-button[aria-pressed=true]{color:#d2e7bb}
-.reset{border:0;background:none;width:29px;height:29px}
-.reset svg{width:17px}
 .zoom-controls{position:fixed;right:22px;bottom:95px;display:flex;flex-direction:column;padding:4px;border-radius:25px;background:#1b2529d9;border:1px solid var(--line)}
 .zoom-controls button{border:0;background:none;width:29px;height:32px;font-weight:400;font-size:20px;color:#a9b9a0}
 .zoom-controls span{height:1px;background:var(--line);margin:0 7px}
@@ -73,9 +61,15 @@ input[type=range]::-moz-range-thumb{background:#c2d7b5;width:8px;height:8px;bord
 .help-popover p{margin:12px 0}
 .help-popover div{margin:8px 0}
 .help-popover kbd{font:10px system-ui,sans-serif;border:1px solid #ffffff20;border-radius:4px;padding:3px 5px;margin-right:5px;color:#d5e1c9}
-.elevation-key{position:fixed;left:59%;bottom:88px;transform:translateX(-50%);display:flex;gap:10px;align-items:center;font-size:9px;color:#a1b59e}
-.elevation-key i{width:130px;height:4px;background:linear-gradient(90deg,#103946,#397682,#82986a,#c7ac7b,#f0f1dc);border-radius:3px}
 [hidden]{display:none!important}
-@media(max-width:1050px){main{width:230px}.view-controls{gap:7px}.view-switch button{padding:10px 12px}.setting-row select{min-width:110px;font-size:10px}}
-@media(max-width:760px){header{top:16px;right:16px}.header-actions{gap:7px}.icon-button{width:32px;height:32px}main{left:16px;top:auto;bottom:95px;width:240px;max-height:calc(100dvh - 165px);z-index:3}.world-panel{background:#182324ed}.panel-title{padding:13px 15px;font-size:12px}#settings-body{padding:15px}.settings-fields{max-height:calc(100dvh - 300px)}.view-controls{left:50%;bottom:16px;gap:7px;width:max-content}.view-switch button{font-size:10px;padding:10px 12px}.orbit-button{font-size:10px}.zoom-controls{right:16px;bottom:95px}.loading{left:50%;top:39%;width:90%}.elevation-key{left:50%;bottom:81px}.help-popover{right:16px;top:61px;width:260px}.error{inset:25% 7%;font-size:12px}}
+@media(max-width:1050px){main{width:230px}.setting-row select{min-width:110px;font-size:10px}}
+@media(max-width:760px){header{top:16px;right:16px}.header-actions{gap:7px}.icon-button{width:32px;height:32px}main{left:16px;top:auto;bottom:95px;width:240px;max-height:calc(100dvh - 165px);z-index:3}.world-panel{background:#182324ed}.panel-title{padding:13px 15px;font-size:12px}#settings-body{padding:15px}.settings-fields{max-height:calc(100dvh - 300px)}.zoom-controls{right:16px;bottom:95px}.loading{left:50%;top:39%;width:90%}.help-popover{right:16px;top:61px;width:260px}.error{inset:25% 7%;font-size:12px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}.loading-orbit{animation-duration:4s}}
+
+.mode-button{border:1px solid #ffffff24;border-radius:18px;padding:0 14px;height:36px;background:#1b2427e6;color:#c5d1bd;font-size:12px}
+.mode-button:hover{background:#293734}
+.mode-button[aria-pressed=true]{background:#c0d8ae;color:#233024}
+.mode-button:disabled{opacity:.45;cursor:wait}
+.flight-info{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:18px;max-width:calc(100% - 32px);padding:10px 16px;background:#172022e6;border:1px solid var(--line);border-radius:8px;font-size:11px;color:#b6c6b1;pointer-events:none;white-space:nowrap}
+.flight-info output{font-variant-numeric:tabular-nums;color:#e9eee7;min-width:100px}
+@media(max-width:760px){.mode-button{height:32px;font-size:11px;padding:0 12px}.flight-info{bottom:16px;gap:5px;flex-direction:column;font-size:10px}.flight-info output{min-width:0}}

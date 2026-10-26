@@ -5,13 +5,12 @@
 <meta name="theme-color" content="#11191b">
 <meta name="description" content="WebGL planet terrain viewer with configurable noise, rivers, lakes, and glaciers.">
 <title>Railplanet</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=1.9.0">
 </head>
 <body>
-<canvas id="planet" tabindex="0" aria-label="Interactive 3D planet. Drag to orbit, scroll to zoom. Arrow keys orbit; plus and minus zoom; Home resets the view."></canvas>
-<div class="vignette" aria-hidden="true"></div>
+<canvas id="planet" tabindex="0" aria-label="Interactive 3D planet. Drag to rotate, scroll to zoom. Arrow keys rotate; plus and minus zoom."></canvas>
 <header>
-  <div class="header-actions"><button class="icon-button" id="help-toggle" aria-label="Controls" title="Controls"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 2-2.5 2-2.5 4M12 16.5v.1"/></svg></button><button class="icon-button" id="fullscreen" aria-label="Enter fullscreen" title="Fullscreen"><svg viewBox="0 0 24 24"><path d="M8 4H4v4m12-4h4v4M4 16v4h4m12-4v4h-4"/></svg></button></div>
+  <div class="header-actions"><button id="flight-toggle" class="mode-button" aria-pressed="false" title="Fly above the center of the current view" disabled>Airplane mode</button><button class="icon-button" id="help-toggle" aria-label="Controls" title="Controls"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 2-2.5 2-2.5 4M12 16.5v.1"/></svg></button><button class="icon-button" id="fullscreen" aria-label="Enter fullscreen" title="Fullscreen"><svg viewBox="0 0 24 24"><path d="M8 4H4v4m12-4h4v4M4 16v4h4m12-4v4h-4"/></svg></button></div>
 </header>
 <main>
   <section class="world-panel" aria-label="Settings">
@@ -37,12 +36,11 @@
     </div>
   </section>
 </main>
-<div class="help-popover" id="help" hidden><strong>Controls</strong><p>Drag to rotate. Scroll or pinch to zoom. Double-click a location to center it.</p><div><kbd>←</kbd><kbd>→</kbd> orbit <kbd>+</kbd><kbd>−</kbd> zoom</div><div><kbd>Home</kbd> reset <kbd>Space</kbd> auto orbit</div><p>Sea level rebuilds drainage. Mountain height changes the vertical scale. Rivers become ice where the mountains turn snowy. Lakes above 3,500 m become flat ice.</p><p>Spatial frequency changes feature size. Noise color adjusts fine-band strength (persistence). More noise layers add progressively shorter scales. All three regenerate on release; their values are saved with the seed in the URL.</p><p>Mesh detail changes triangle density immediately. It preserves the same terrain, rivers, and lakes; no regeneration is needed.</p></div>
+<div class="help-popover" id="help" hidden><strong>Controls</strong><p>Globe: drag or use the arrow keys to rotate. Scroll or pinch to zoom. Double-click a location to center it.</p><p>Airplane mode starts above the center of the current view. Hold W/S to move forward/backward, A/D to yaw left/right, and Q/E to descend/climb. Combine keys to turn while moving. Release to hover.</p><p>Drag to look around in airplane mode. Scroll or use +/− to change height. Escape returns to globe view. Height is measured above the surface; the camera stays above terrain, water, and ice.</p><p>Sea level rebuilds drainage. Mountain height changes the vertical scale. Rivers become ice where the mountains turn snowy. Lakes above 3,500 m become flat ice.</p><p>Spatial frequency changes feature size. Noise color adjusts persistence. More layers add shorter scales. These regenerate on release; their values are saved with the seed in the URL.</p><p>Mesh detail changes triangle density immediately without regenerating the landscape.</p></div>
 <div id="loading" class="loading"><span class="loading-orbit"></span><strong>Generating terrain…</strong><span id="loading-message"></span></div>
 <div id="error" class="error" hidden role="alert"></div>
-<div class="view-controls" aria-label="View controls"><div class="view-switch" role="group" aria-label="Surface style"><button class="active" id="natural" aria-pressed="true">Natural</button><button id="elevation" aria-pressed="false">Elevation</button></div><span class="control-divider"></span><button class="orbit-button" id="orbit" aria-label="Start automatic orbit" aria-pressed="false" title="Auto orbit · Space"><svg viewBox="0 0 20 20"><path d="m8 5 7 5-7 5Z"/></svg><span>Auto orbit</span></button><button class="icon-button reset" id="reset" aria-label="Reset view" title="Reset view · Home"><svg viewBox="0 0 24 24"><path d="M19 9A7.5 7.5 0 1 0 19.2 15M19 4v5h-5"/></svg></button></div>
+<div id="flight-info" class="flight-info" hidden><output id="flight-height" aria-live="off"></output><span>W/S forward/back · A/D yaw · Q/E down/up</span></div>
 <div class="zoom-controls"><button id="zoom-in" aria-label="Zoom in">+</button><span></span><button id="zoom-out" aria-label="Zoom out">−</button></div>
-<div class="elevation-key" id="elevation-key" hidden><span>OCEAN</span><i></i><span>SUMMIT</span></div>
-<script type="module" src="app.js?v=1.8.0"></script>
+<script type="module" src="app.js?v=1.9.0"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-import {MAX_LAYERS, WAVES_PER_BAND, MOISTURE_WAVES, ELEVATION_GAIN, ELEVATION_OFFSET} from './noise.js?v=1.8.0';
+import {MAX_LAYERS, WAVES_PER_BAND, MOISTURE_WAVES, ELEVATION_GAIN, ELEVATION_OFFSET} from './noise.js?v=1.9.0';
 // Original GLSL, independent of terrain3d. Coordinates stay on a sphere, avoiding terrain seams.
 export const fullscreenVertex = `#version 300 es
 precision highp float;
@@ -210,11 +210,3 @@ void main(){
   float coverage=clamp(.5+(width-abs(across))/(2.0*feather),0.0,1.0);
   color=vec4(coverage,0,0,1);
 }`;
-export const atmosphereVertex = `#version 300 es
-precision highp float;
-precision highp int;
-precision highp sampler2D;layout(location=0) in vec3 direction;uniform mat4 viewProjection;out vec3 world;void main(){world=normalize(direction)*1.15;gl_Position=viewProjection*vec4(world,1.0);}`;
-export const atmosphereFragment = `#version 300 es
-precision highp float;
-precision highp int;
-precision highp sampler2D;in vec3 world;uniform vec3 camera;uniform vec3 sun;out vec4 color;void main(){vec3 n=normalize(world),v=normalize(camera-world);float rim=pow(1.0-abs(dot(n,v)),5.0);float lit=smoothstep(-.4,.7,dot(n,sun));color=vec4(.30,.48,.49,rim*.10*lit);}`;

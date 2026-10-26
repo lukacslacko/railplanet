@@ -1,6 +1,6 @@
 # Railplanet
 
-Procedural planet terrain viewer in JavaScript and WebGL 2. Includes configurable terrain noise, oceans, downhill rivers, lakes, glaciers, and unrestricted camera rotation. Cities, railways, and trains are not implemented yet.
+Procedural planet terrain viewer in JavaScript and WebGL 2. Includes configurable terrain noise, oceans, downhill rivers, lakes, glaciers, unrestricted camera rotation, and a hovering flight camera. Cities, railways, and trains are not implemented yet.
 
 [Open the viewer](https://lukacslacko.github.io/railplanet/)
 
@@ -18,11 +18,12 @@ Open `http://localhost:4173`. A WebGL 2 browser with hardware acceleration is re
 
 - Drag to rotate through any orientation, including the poles.
 - Scroll, pinch, or use +/− to zoom. Double-click a location to center it.
-- Arrow keys rotate; Home resets; Space toggles automatic orbit.
+- Arrow keys rotate the globe.
 - Settings controls the seed, spatial frequency, noise persistence, layer count, vertical scale, sea level, and mesh density.
 - Noise controls regenerate on release. The seed, frequency, persistence, and layer count are stored in the URL.
 - Mesh detail changes geometry immediately without changing the landscape: 196,608, 442,368, or 995,328 triangles.
-- Natural and Elevation switch the surface coloring.
+- Airplane mode starts above the center of the globe view. W/S moves forward/backward, A/D yaws, and Q/E descends/climbs. Combine keys to turn while flying. Release to hover.
+- In airplane mode, drag to look, scroll or use +/− to change height, and press Escape or the mode button to return to the globe. The camera follows planetary curvature and stays above terrain, lakes, water, and ice. Height is measured above the surface.
 
 ## Implementation
 
@@ -42,7 +43,7 @@ Run the JavaScript syntax and numerical checks with Node.js:
 npm run check
 ```
 
-These cover closed mesh topology at all detail levels, drainage, river continuity, camera rotation through poles, deterministic noise spectra, and parameter bounds.
+These cover closed mesh topology at all detail levels, drainage, river continuity, camera rotation through poles, deterministic noise spectra, parameter bounds, and spherical flight with collision checks against the actual displaced mesh.
 
 For actual GPU shader checks, serve the project root:
 
