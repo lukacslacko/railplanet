@@ -1,0 +1,16 @@
+{
+  "name": "railplanet",
+  "version": "1.8.0",
+  "type": "module",
+  "description": "JavaScript and WebGL 2 procedural planet terrain viewer",
+  "scripts": {
+    "start": "python3 -m http.server 4173 --directory dist",
+    "check": "node --check dist/app.js && node --check dist/shaders.js && node --check dist/hydrology.js && node --check dist/orbit.js && node --check dist/noise.js && node --check dist/mesh.js && node checks/mesh.mjs && node checks/hydrology.mjs && node checks/orbit.mjs && node checks/noise.mjs"
+  },
+  "license": "MIT",
+  "homepage": "https://lukacslacko.github.io/railplanet/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lukacslacko/railplanet.git"
+  }
+}

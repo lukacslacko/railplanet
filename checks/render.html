@@ -1,0 +1,50 @@
+<!doctype html><meta charset="utf-8"><title>Terra GPU checks</title><style>body{background:#141b1d;color:#d6e6d5;font:16px/1.6 monospace;padding:32px}canvas{width:320px;height:160px;image-rendering:pixelated}pre{white-space:pre-wrap}</style><h1>Terra GPU checks</h1><canvas width="64" height="32"></canvas><pre id="result">Checking actual production shaders…</pre><script type="module">
+import * as S from '../dist/shaders.js?v=1.8.0';
+import {createNoise,elevationAt,MAX_LAYERS,WAVES_PER_BAND} from '../dist/noise.js?v=1.8.0';
+const gl=document.querySelector('canvas').getContext('webgl2'),result=document.querySelector('#result'),report=[];
+const assert=(value,message)=>{if(!value)throw Error(message);};
+function program(vs,fs){const p=gl.createProgram();for(const [type,text] of [[gl.VERTEX_SHADER,vs],[gl.FRAGMENT_SHADER,fs]]){const s=gl.createShader(type);gl.shaderSource(s,text);gl.compileShader(s);assert(gl.getShaderParameter(s,gl.COMPILE_STATUS),gl.getShaderInfoLog(s));gl.attachShader(p,s);}gl.linkProgram(p);assert(gl.getProgramParameter(p,gl.LINK_STATUS),gl.getProgramInfoLog(p));return p;}
+function texture(width,height,data){const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,width,height,0,gl.RGBA,gl.UNSIGNED_BYTE,data);return t;}
+const packed=(height)=>{const e=Math.floor((height+.24)/.48*65535);return [e>>8,e&255];};
+const decode=(data,i)=>((data[i]*256+data[i+1])/65535)*.48-.24;
+try{
+ const gen=program(S.fullscreenVertex,S.generateFragment),field=texture(64,32,null),slopes=texture(64,32,null),fbo=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,fbo);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,field,0);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT1,gl.TEXTURE_2D,slopes,0);gl.drawBuffers([gl.COLOR_ATTACHMENT0,gl.COLOR_ATTACHMENT1]);assert(gl.checkFramebufferStatus(gl.FRAMEBUFFER)===gl.FRAMEBUFFER_COMPLETE,'MRT framebuffer');
+ const waveTexture=gl.createTexture();gl.activeTexture(gl.TEXTURE4);gl.bindTexture(gl.TEXTURE_2D,waveTexture);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA32F,WAVES_PER_BAND,MAX_LAYERS,0,gl.RGBA,gl.FLOAT,null);
+ for(const settings of [{frequency:1,color:.49,layers:5},{frequency:.4,color:.15,layers:1},{frequency:.4,color:.8,layers:10},{frequency:10,color:.15,layers:1},{frequency:10,color:.8,layers:10}]){
+ gl.viewport(0,0,64,32);gl.useProgram(gen);const model=createNoise('225795',settings);gl.uniform1fv(gl.getUniformLocation(gen,'bandAmplitudes[0]'),model.amplitudes);gl.activeTexture(gl.TEXTURE4);gl.bindTexture(gl.TEXTURE_2D,waveTexture);gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,WAVES_PER_BAND,MAX_LAYERS,gl.RGBA,gl.FLOAT,model.terrain);gl.uniform1i(gl.getUniformLocation(gen,'terrainWaves'),4);gl.uniform1i(gl.getUniformLocation(gen,'noiseLayers'),settings.layers);gl.uniform4fv(gl.getUniformLocation(gen,'moistureWaves[0]'),model.moisture);gl.drawArrays(gl.TRIANGLES,0,3);
+ const h=new Uint8Array(64*32*4),s=new Uint8Array(h.length);gl.readBuffer(gl.COLOR_ATTACHMENT0);gl.readPixels(0,0,64,32,gl.RGBA,gl.UNSIGNED_BYTE,h);gl.readBuffer(gl.COLOR_ATTACHMENT1);gl.readPixels(0,0,64,32,gl.RGBA,gl.UNSIGNED_BYTE,s);
+ let heightError=0,slopeError=0,normalError=0;
+ const normalize=v=>v.map(x=>x/Math.hypot(...v));
+ for(let y=0;y<32;y+=3)for(let x=0;x<64;x+=3){
+  const lon=(x+.5)/64*Math.PI*2,lat=((y+.5)/32-.5)*Math.PI;
+  const n=[Math.cos(lat)*Math.cos(lon),Math.sin(lat),Math.cos(lat)*Math.sin(lon)];
+  const east=[-Math.sin(lon),0,Math.cos(lon)],north=[-Math.sin(lat)*Math.cos(lon),Math.cos(lat),-Math.sin(lat)*Math.sin(lon)],i=(y*64+x)*4;
+  const cpuHeight=elevationAt(n,model.terrain,model.amplitudes),gpuHeight=decode(h,i);
+  heightError=Math.max(heightError,Math.abs(gpuHeight-cpuHeight));
+  const cpuGradient=[0,0,0],gpuGradient=[0,0,0];
+  for(const [axis,tangent] of [east,north].entries()){
+   const e=.00001,a=n.map((v,k)=>v+tangent[k]*e),b=n.map((v,k)=>v-tangent[k]*e);
+   const expected=(elevationAt(normalize(a),model.terrain,model.amplitudes)-elevationAt(normalize(b),model.terrain,model.amplitudes))/(2*e);
+   const compressed=((s[i+axis*2]*256+s[i+axis*2+1])/65535-.5)*2,actual=compressed/(1-Math.abs(compressed));
+   slopeError=Math.max(slopeError,Math.abs(actual-expected)/(1+Math.abs(expected)));
+   for(let k=0;k<3;k++){cpuGradient[k]+=tangent[k]*expected;gpuGradient[k]+=tangent[k]*actual;}
+  }
+  const cpuNormal=normalize(n.map((v,k)=>v-1.4*cpuGradient[k]/(1+cpuHeight*1.4)));
+  const gpuNormal=normalize(n.map((v,k)=>v-1.4*gpuGradient[k]/(1+gpuHeight*1.4)));
+  normalError=Math.max(normalError,Math.hypot(...cpuNormal.map((v,k)=>v-gpuNormal[k])));
+ }
+ assert(heightError<.000012,'GPU height mismatch '+heightError);
+ assert(normalError<.0005,'GPU analytic normal mismatch '+normalError);
+ report.push('PASS GPU frequency '+settings.frequency+' / color '+settings.color+' / layers '+settings.layers+': height error '+heightError.toExponential(2)+', normal error '+normalError.toExponential(2));
+ }
+ gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,64,32);
+ const vertex=`#version 300 es\nprecision highp float;out vec3 world;out vec3 radial;void main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));radial=normalize(vec3(.3,.2,1));world=radial;gl_Position=vec4(p*2.0-1.0,0,1);}`;
+ const render=program(vertex,S.terrainFragment);gl.useProgram(render);gl.uniform3fv(gl.getUniformLocation(render,'camera'),[0,0,4]);gl.uniform3fv(gl.getUniformLocation(render,'sun'),[0,0,1]);gl.uniform1i(gl.getUniformLocation(render,'mode'),0);
+ const blue=p=>p[2]>p[0]+80&&p[2]>p[1]+70,ice=p=>Math.min(...p.slice(0,3))>120&&Math.max(...p.slice(0,3))-Math.min(...p.slice(0,3))<45;
+ for(const test of [{name:'river on brown mountains stays water',h:.05,lake:0,relief:1.4,sea:0,river:true,want:blue},{name:'river just below visible snowline stays water',h:.0744,lake:0,relief:1.4,sea:0,river:true,want:blue},{name:'river on snowy mountains becomes ice',h:.078,lake:0,relief:1.4,sea:0,river:true,want:ice},{name:'river ice matches snow when relief changes',h:.078,lake:0,relief:.5,sea:0,river:true,want:ice},{name:'river snowline follows sea level',h:.09,lake:.03,relief:1.4,sea:.03,river:true,want:blue},{name:'low lake',h:.01,lake:.03,relief:1.4,sea:0,river:false,want:blue},{name:'high lake',h:.01,lake:.05,relief:1.4,sea:0,river:false,want:ice},{name:'raised ocean stays liquid',h:.01,lake:0,relief:1.4,sea:.05,river:false,want:blue}]){
+  for(const [unit,name,pixels] of [[0,'terrain',[...packed(test.h),128,255]],[1,'drainage',[...packed(test.lake),255,255]],[2,'riverMask',[test.river?255:0,0,0,255]],[3,'slopeMap',[127,255,127,255]]]){gl.activeTexture(gl.TEXTURE0+unit);texture(1,1,new Uint8Array(pixels));gl.uniform1i(gl.getUniformLocation(render,name),unit);}
+  gl.uniform1f(gl.getUniformLocation(render,'relief'),test.relief);gl.uniform1f(gl.getUniformLocation(render,'sea'),test.sea);gl.drawArrays(gl.TRIANGLES,0,3);const pixel=new Uint8Array(4);gl.readPixels(20,16,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);assert(test.want(pixel),test.name+' wrong material '+pixel);report.push('PASS '+test.name+' — RGB '+Array.from(pixel.slice(0,3)).join(', '));
+ }
+ assert(gl.getError()===gl.NO_ERROR,'WebGL error');result.textContent=report.join('\n')+'\nAll GPU checks passed.';
+}catch(error){result.textContent=report.join('\n')+'\nFAIL '+error.stack;console.error(error);}
+</script>
