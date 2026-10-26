@@ -1,9 +1,9 @@
-import * as S from './shaders.js?v=1.9.0';
-import * as Orbit from './orbit.js?v=1.9.0';
-import * as Flight from './flight.js?v=1.9.0';
-import {createSurfaceSampler} from './surface.js?v=1.9.0';
-import {cubeSphereData} from './mesh.js?v=1.9.0';
-import {createNoise,normalizeNoiseSettings,MAX_LAYERS,WAVES_PER_BAND} from './noise.js?v=1.9.0';
+import * as S from './shaders.js?v=1.9.1';
+import * as Orbit from './orbit.js?v=1.9.1';
+import * as Flight from './flight.js?v=1.9.1';
+import {createSurfaceSampler} from './surface.js?v=1.9.1';
+import {cubeSphereData} from './mesh.js?v=1.9.1';
+import {createNoise,normalizeNoiseSettings,MAX_LAYERS,WAVES_PER_BAND} from './noise.js?v=1.9.1';
 const $=id=>document.getElementById(id);
 const canvas=$('planet');
 const gl=canvas.getContext('webgl2',{antialias:true,alpha:false,powerPreference:'high-performance',depth:true,stencil:false});
@@ -13,7 +13,7 @@ function start(){
 const MAP_W=2048,MAP_H=1024;
 const homeDistance=()=>innerWidth<760?Math.max(3.95,innerHeight/innerWidth*3.2):3.95;
 const state={seed:'42',relief:1.4,sea:0,mode:0,quality:192,noise:normalizeNoiseSettings(),orientation:Orbit.home(),targetOrientation:Orbit.home(),distance:3.95,targetDistance:3.95,dirty:true,busy:false,water:0,max:0,job:0,triangles:0};
-let worker=new Worker('./hydrology.js?v=1.9.0'),mapPixels=null,mesh=null,pixelRatio=Math.min(devicePixelRatio,1.5),vp,cam=[0,0,3.95],lastTime=0;
+let worker=new Worker('./hydrology.js?v=1.9.1'),mapPixels=null,mesh=null,pixelRatio=Math.min(devicePixelRatio,1.5),vp,cam=[0,0,3.95],lastTime=0;
 let sun=[0,0,1],flight=null,surfaceAt=null,lakePixels=null,lakeWidth=MAP_W,lakeHeight=MAP_H;
 const held=new Set();
 const programs={terrain:program(S.terrainVertex,S.terrainFragment),generator:program(S.fullscreenVertex,S.generateFragment),riverAtlas:program(S.riverAtlasVertex,S.riverAtlasFragment)};
@@ -68,7 +68,7 @@ function makeMesh(positions,indices=null){const vao=gl.createVertexArray(),vbo=g
 function deleteMesh(m){if(!m)return;gl.deleteVertexArray(m.vao);gl.deleteBuffer(m.vbo);if(m.ibo)gl.deleteBuffer(m.ibo);}
 function setQuality(n){deleteMesh(mesh);mesh=cubeSphere(n);state.quality=n;state.triangles=mesh.count/3;refreshSurface();state.dirty=true;}
 setQuality(state.quality);
-function setBusy(b,message=''){state.busy=b;if(b)held.clear();$('generate').disabled=b;$('flight-toggle').disabled=!surfaceAt||(b&&!flight);$('generation-state').textContent=message;$('generation-state').hidden=!message;}
+function setBusy(b,message=''){state.busy=b;if(b)held.clear();$('generate').disabled=b;$('random-seed').disabled=b;$('flight-toggle').disabled=!surfaceAt||(b&&!flight);$('generation-state').textContent=message;$('generation-state').hidden=!message;}
 let noiseTimer, generationQueued=false;
 function generate(){clearTimeout(noiseTimer);if(state.busy){generationQueued=true;return;}generationQueued=false;state.noise=normalizeNoiseSettings({frequency:$('frequency').value,color:$('noise-color').value,layers:$('layers').value});state.seed=$('seed').value.trim()||'42';$('seed').value=state.seed;const url=new URL(location.href);url.searchParams.set('seed',state.seed);url.searchParams.set('frequency',state.noise.frequency);url.searchParams.set('color',state.noise.color);url.searchParams.set('layers',state.noise.layers);history.replaceState(null,'',url);setBusy(true,'Generating terrain…');$('loading').hidden=false;$('loading').style.opacity='1';$('loading-message').textContent='Generating terrain…';
 // Yield a paint before the single GPU generation pass and its one-time readback.
@@ -199,7 +199,7 @@ $('fullscreen').onclick=async()=>{try{if(document.fullscreenElement)await docume
 window.addEventListener('resize',()=>{state.dirty=true;});
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();showError('The graphics context was interrupted. Reload this page to resume exploring.');});
 // Let the browser suspend the worker when this page enters its back/forward cache.
-if(innerWidth<760){$('settings-toggle').setAttribute('aria-expanded','false');$('settings-body').hidden=true;state.distance=state.targetDistance=homeDistance();}
+if(innerWidth<760)state.distance=state.targetDistance=homeDistance();
 const params=new URLSearchParams(location.search),seedParam=params.get('seed');if(seedParam)$('seed').value=seedParam.slice(0,20);
 const initialNoise=normalizeNoiseSettings({frequency:params.get('frequency'),color:params.get('color'),layers:params.get('layers')});
 $('frequency').value=initialNoise.frequency;$('noise-color').value=initialNoise.color;$('layers').value=initialNoise.layers;

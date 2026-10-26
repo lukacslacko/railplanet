@@ -13,7 +13,7 @@ header{position:fixed;right:22px;top:22px}
 .icon-button{display:flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:50%;background:#1b2427b3;width:36px;height:36px;color:#a2afa8;transition:.2s}
 .icon-button:hover{color:var(--text);background:#ffffff0c}
 .icon-button svg{width:20px;height:20px}
-main{position:fixed;left:22px;top:22px;bottom:95px;width:260px;display:flex;flex-direction:column;pointer-events:none}
+main{position:fixed;left:22px;top:22px;bottom:95px;width:260px;display:flex;flex-direction:column;gap:10px;pointer-events:none}
 .world-panel{min-height:0;display:flex;flex-direction:column;pointer-events:auto;border:1px solid #c6d6c019;border-radius:12px;background:var(--panel);backdrop-filter:blur(22px);box-shadow:0 12px 40px #00000008}
 .panel-title{flex:none;width:100%;display:flex;justify-content:space-between;align-items:center;background:none;border:0;padding:17px 19px;font-size:13px;font-weight:550}
 .panel-title>span{display:flex;gap:9px;align-items:center}
@@ -73,3 +73,8 @@ input[type=range]::-moz-range-thumb{background:#c2d7b5;width:8px;height:8px;bord
 .flight-info{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:18px;max-width:calc(100% - 32px);padding:10px 16px;background:#172022e6;border:1px solid var(--line);border-radius:8px;font-size:11px;color:#b6c6b1;pointer-events:none;white-space:nowrap}
 .flight-info output{font-variant-numeric:tabular-nums;color:#e9eee7;min-width:100px}
 @media(max-width:760px){.mode-button{height:32px;font-size:11px;padding:0 12px}.flight-info{bottom:16px;gap:5px;flex-direction:column;font-size:10px}.flight-info output{min-width:0}}
+
+.seed-panel{flex:none;pointer-events:auto;padding:16px 19px;border:1px solid #c6d6c019;border-radius:12px;background:var(--panel);backdrop-filter:blur(22px)}
+.seed-panel .seed-row{margin-bottom:12px}
+.seed-input button:disabled{opacity:.45;cursor:wait}
+@media(max-width:760px){.seed-panel{padding:14px 15px;background:#182324ed}}

@@ -1,6 +1,6 @@
 {
   "name": "railplanet",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "type": "module",
   "description": "JavaScript and WebGL 2 procedural planet terrain viewer",
   "scripts": {

@@ -4,8 +4,10 @@ const golden=Math.PI*(3-Math.sqrt(5));
 const direction=(i,count)=>{const z=1-2*(i+.5)/count,r=Math.sqrt(1-z*z),a=i*golden;return [r*Math.cos(a),z,r*Math.sin(a)];};
 let worstSecondMoment=0,worstFourthMoment=0;
 let snowySamples=0;
+// Keep the existing terrain-shape regression independent of UI defaults.
+const baseline={frequency:1,color:.49,layers:5};
 for(const seed of ['225795','911154','665185','42','31415']){
- const model=createNoise(seed),again=createNoise(seed);
+ const model=createNoise(seed,baseline),again=createNoise(seed,baseline);
  assert.deepEqual(model,again,'world spectra must be repeatable by seed');
  const profiles=[];
  for(let band=0;band<MAX_LAYERS;band++){
@@ -24,11 +26,11 @@ for(const seed of ['225795','911154','665185','42','31415']){
  }
  let land=0,high=0,snow=0,min=1,max=-1,totalSlope=0;
  for(let j=0;j<8192;j++){
-  const n=direction(j,8192),h=elevationAt(n,model.terrain);
+  const n=direction(j,8192),h=elevationAt(n,model.terrain,model.amplitudes);
   assert(Number.isFinite(h));land+=h>0;high+=h>.055;snow+=h>.0775;min=Math.min(min,h);max=Math.max(max,h);
   const tangent=[-n[2],0,n[0]],length=Math.hypot(...tangent);
   const neighbor=n.map((v,i)=>v+tangent[i]/length*.002),radius=Math.hypot(...neighbor);
-  totalSlope+=Math.abs(elevationAt(neighbor.map(v=>v/radius),model.terrain)-h)/.002;
+  totalSlope+=Math.abs(elevationAt(neighbor.map(v=>v/radius),model.terrain,model.amplitudes)-h)/.002;
  }
  assert(land/8192>.55&&land/8192<.85,'world should have substantially more land than the former water-heavy baseline');
  assert(high/8192>.01&&high/8192<.10,'highlands should be present but sparse');
@@ -44,9 +46,9 @@ assert(worstFourthMoment<.02,'wave directions must have balanced fourth moments'
 assert(snowySamples>0,'some worlds should have snowy summits');
 assert.notDeepEqual(createNoise('911154'),createNoise('911155'),'different seeds must change the world');
 assert.deepEqual(normalizeNoiseSettings({frequency:'bad',color:null}),NOISE_DEFAULTS,'invalid or missing URL settings use defaults');
-assert.deepEqual(normalizeNoiseSettings({frequency:999,color:-2}),{frequency:10,color:.15,layers:5},'URL settings stay in the supported range');
-assert.deepEqual(normalizeNoiseSettings({frequency:'1.234',color:'.527'}),{frequency:1.25,color:.53,layers:5},'URL values match slider precision');
-const base=createNoise('225795'),scaled=createNoise('225795',{frequency:2}),smooth=createNoise('225795',{color:.15}),fine=createNoise('225795',{color:.8});
+assert.deepEqual(normalizeNoiseSettings({frequency:999,color:-2}),{frequency:10,color:.15,layers:10},'URL settings stay in the supported range');
+assert.deepEqual(normalizeNoiseSettings({frequency:'1.234',color:'.527'}),{frequency:1.25,color:.53,layers:10},'URL values match slider precision');
+const base=createNoise('225795',baseline),scaled=createNoise('225795',{...baseline,frequency:2}),smooth=createNoise('225795',{...baseline,color:.15}),fine=createNoise('225795',{...baseline,color:.8});
 assert.deepEqual(base.amplitudes,scaled.amplitudes,'frequency does not change band amplitudes');
 assert.deepEqual(base.moisture,scaled.moisture,'frequency preserves the seeded moisture field');
 assert.deepEqual(base.terrain,smooth.terrain,'noise color preserves wave directions, phases, and frequencies');
@@ -69,7 +71,7 @@ for(let slope=-Math.ceil(maxDerivative);slope<=Math.ceil(maxDerivative);slope+=.
  const packed=Math.floor((slope/(1+Math.abs(slope))*.5+.5)*65535),compressed=(packed/65535-.5)*2,decoded=compressed/(1-Math.abs(compressed));
  assert(Math.abs(decoded-slope)/(1+Math.abs(slope))<(1+Math.abs(slope))/32000,'slope encoding preserves fine and steep gradients without clipping');
 }
-const one=createNoise('225795',{layers:1}),ten=createNoise('225795',{layers:10});
+const one=createNoise('225795',{...baseline,layers:1}),ten=createNoise('225795',{...baseline,layers:10});
 assert.deepEqual(one.terrain,ten.terrain,'adding layers preserves seeded wave directions, phases, and frequencies');
 assert.deepEqual(one.moisture,ten.moisture,'layer count preserves moisture');
 for(let band=0;band<BAND_COUNT;band++)assert.equal(base.amplitudes[band],ten.amplitudes[band],'adding layers preserves the existing coarse amplitudes');

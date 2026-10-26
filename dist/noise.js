@@ -1,4 +1,4 @@
-import {rotate} from './orbit.js?v=1.9.0';
+import {rotate} from './orbit.js?v=1.9.1';
 
 export const BAND_COUNT = 5;
 export const MAX_LAYERS = 10;
@@ -8,7 +8,7 @@ export const FIRST_AMPLITUDE = .24;
 export const PERSISTENCE = .49;
 export const ELEVATION_GAIN = .104;
 export const ELEVATION_OFFSET = .012;
-export const NOISE_DEFAULTS = Object.freeze({frequency:1, color:PERSISTENCE, layers:BAND_COUNT});
+export const NOISE_DEFAULTS = Object.freeze({frequency:1.5, color:.53, layers:MAX_LAYERS});
 export const NOISE_LIMITS = Object.freeze({frequency:[.4,10,.05], color:[.15,.8,.01], layers:[1,MAX_LAYERS,1]});
 
 export function normalizeNoiseSettings(settings={}) {
@@ -21,7 +21,7 @@ export function normalizeNoiseSettings(settings={}) {
   }
   return result;
 }
-export function bandAmplitudes(color=PERSISTENCE, layers=BAND_COUNT, frequency=1) {
+export function bandAmplitudes(color=NOISE_DEFAULTS.color, layers=NOISE_DEFAULTS.layers, frequency=NOISE_DEFAULTS.frequency) {
   const energy=p=>Array.from({length:BAND_COUNT},(_,band)=>p**(2*band)).reduce((sum,x)=>sum+x,0);
   // Hold expected elevation variance steady as the spectral balance changes.
   const scale=Math.sqrt(energy(PERSISTENCE)/energy(color));

@@ -5,7 +5,7 @@
 <meta name="theme-color" content="#11191b">
 <meta name="description" content="WebGL planet terrain viewer with configurable noise, rivers, lakes, and glaciers.">
 <title>Railplanet</title>
-<link rel="stylesheet" href="style.css?v=1.9.0">
+<link rel="stylesheet" href="style.css?v=1.9.1">
 </head>
 <body>
 <canvas id="planet" tabindex="0" aria-label="Interactive 3D planet. Drag to rotate, scroll to zoom. Arrow keys rotate; plus and minus zoom."></canvas>
@@ -13,17 +13,21 @@
   <div class="header-actions"><button id="flight-toggle" class="mode-button" aria-pressed="false" title="Fly above the center of the current view" disabled>Airplane mode</button><button class="icon-button" id="help-toggle" aria-label="Controls" title="Controls"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 2-2.5 2-2.5 4M12 16.5v.1"/></svg></button><button class="icon-button" id="fullscreen" aria-label="Enter fullscreen" title="Fullscreen"><svg viewBox="0 0 24 24"><path d="M8 4H4v4m12-4h4v4M4 16v4h4m12-4v4h-4"/></svg></button></div>
 </header>
 <main>
-  <section class="world-panel" aria-label="Settings">
-    <button class="panel-title" id="settings-toggle" aria-expanded="true"><span><svg viewBox="0 0 20 20"><path d="M3 5h14M3 10h14M3 15h14M7 3v4m6 1v4m-6 1v4"/></svg>Settings</span><svg class="chevron" viewBox="0 0 20 20"><path d="m6 12 4-4 4 4"/></svg></button>
-    <div id="settings-body">
-      <div class="settings-fields">
+  <section class="seed-panel" aria-label="Planet seed">
       <div class="seed-row"><label for="seed">World seed</label><div class="seed-input"><span>#</span><input id="seed" value="42" maxlength="20" aria-label="World seed"><button id="random-seed" aria-label="Randomize world seed" title="Random seed"><svg viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="14" rx="3"/><circle cx="7" cy="7" r=".8"/><circle cx="13" cy="13" r=".8"/><circle cx="10" cy="10" r=".8"/></svg></button></div></div>
+      <button class="generate" id="generate"><svg viewBox="0 0 20 20"><path d="M16 7a6.5 6.5 0 1 0 .4 5M16 3v4h-4"/></svg><span>Generate</span></button>
+      <div class="generation-state" id="generation-state" role="status" hidden></div>
+  </section>
+  <section class="world-panel" aria-label="Settings">
+    <button class="panel-title" id="settings-toggle" aria-expanded="false" aria-controls="settings-body"><span><svg viewBox="0 0 20 20"><path d="M3 5h14M3 10h14M3 15h14M7 3v4m6 1v4m-6 1v4"/></svg>Settings</span><svg class="chevron" viewBox="0 0 20 20"><path d="m6 12 4-4 4 4"/></svg></button>
+    <div id="settings-body" hidden>
+      <div class="settings-fields">
       <div class="noise-settings">
-        <label class="slider-label" for="frequency">Spatial frequency <output id="frequency-value">1.00×</output></label><input id="frequency" type="range" min="0.4" max="10" step="0.05" value="1" aria-describedby="frequency-hint">
+        <label class="slider-label" for="frequency">Spatial frequency <output id="frequency-value">1.50×</output></label><input id="frequency" type="range" min="0.4" max="10" step="0.05" value="1.5" aria-describedby="frequency-hint">
         <p class="setting-hint" id="frequency-hint">Lower: larger landforms. Higher: smaller.</p>
-        <label class="slider-label" for="noise-color">Noise color <output id="noise-color-value">0.49</output></label><input id="noise-color" type="range" min="0.15" max="0.8" step="0.01" value="0.49" aria-describedby="noise-color-hint">
+        <label class="slider-label" for="noise-color">Noise color <output id="noise-color-value">0.53</output></label><input id="noise-color" type="range" min="0.15" max="0.8" step="0.01" value="0.53" aria-describedby="noise-color-hint">
         <p class="setting-hint" id="noise-color-hint">Lower: broad &amp; smooth. Higher: more fine detail.<br>Release a noise slider to regenerate.</p>
-        <label class="slider-label" for="layers">Noise layers <output id="layers-value">5</output></label><input id="layers" type="range" min="1" max="10" step="1" value="5" aria-describedby="layers-hint">
+        <label class="slider-label" for="layers">Noise layers <output id="layers-value">10</output></label><input id="layers" type="range" min="1" max="10" step="1" value="10" aria-describedby="layers-hint">
         <p class="setting-hint" id="layers-hint">Each layer adds a shorter scale. The finest<br>details fade at the map’s resolution limit.</p>
       </div>
       <label class="slider-label" for="relief">Mountain height <output id="relief-value">1.4×</output></label><input id="relief" type="range" min="0.5" max="2.5" step="0.1" value="1.4">
@@ -31,8 +35,7 @@
       <div class="setting-row"><label for="quality">Mesh detail</label><select id="quality" aria-describedby="quality-hint"><option value="128">Light · 197k</option><option value="192" selected>Balanced · 442k</option><option value="288">High · 995k</option></select></div>
       <p class="setting-hint" id="quality-hint">Triangles · applies instantly. Same landscape;<br>zoom in to see finer surface geometry.</p>
       </div>
-      <button class="generate" id="generate"><svg viewBox="0 0 20 20"><path d="M16 7a6.5 6.5 0 1 0 .4 5M16 3v4h-4"/></svg><span>Generate</span></button>
-      <div class="generation-state" id="generation-state" role="status" hidden></div>
+
     </div>
   </section>
 </main>
@@ -41,6 +44,6 @@
 <div id="error" class="error" hidden role="alert"></div>
 <div id="flight-info" class="flight-info" hidden><output id="flight-height" aria-live="off"></output><span>W/S forward/back · A/D yaw · Q/E down/up</span></div>
 <div class="zoom-controls"><button id="zoom-in" aria-label="Zoom in">+</button><span></span><button id="zoom-out" aria-label="Zoom out">−</button></div>
-<script type="module" src="app.js?v=1.9.0"></script>
+<script type="module" src="app.js?v=1.9.1"></script>
 </body>
 </html>

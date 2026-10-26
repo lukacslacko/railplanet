@@ -19,7 +19,8 @@ Open `http://localhost:4173`. A WebGL 2 browser with hardware acceleration is re
 - Drag to rotate through any orientation, including the poles.
 - Scroll, pinch, or use +/− to zoom. Double-click a location to center it.
 - Arrow keys rotate the globe.
-- Settings controls the seed, spatial frequency, noise persistence, layer count, vertical scale, sea level, and mesh density.
+- The seed field, Generate button, and random-seed button remain visible when Settings is closed. Enter a seed and press Enter or Generate to load that planet.
+- Settings starts closed and controls spatial frequency, noise persistence, layer count, vertical scale, sea level, and mesh density. Defaults: frequency 1.5, persistence 0.53, 10 layers, mountain height 1.4, sea level 0, and Balanced mesh detail. Explicit URL parameters override the noise defaults.
 - Noise controls regenerate on release. The seed, frequency, persistence, and layer count are stored in the URL.
 - Mesh detail changes geometry immediately without changing the landscape: 196,608, 442,368, or 995,328 triangles.
 - Airplane mode starts above the center of the globe view. W/S moves forward/backward, A/D yaws, and Q/E descends/climbs. Combine keys to turn while flying. Release to hover.
