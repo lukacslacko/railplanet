@@ -1,10 +1,11 @@
-import {createSurfaceSampler} from './surface.js?v=2.0.0';
-import {planRoute,R} from './rail.js?v=2.0.0';
+import {createSurfaceSampler} from './surface.js?v=2.1.0';
+import {setPlanetRadius,HEIGHT_METERS} from './scale.js?v=2.1.0';
+import {planRoute,R} from './rail.js?v=2.1.0';
 let version=0,world=null;
 self.onmessage=async({data})=>{
   if(data.type==='init'){
-    version++;const sampler=createSurfaceSampler({...data.config,terrain:new Uint8Array(data.terrain),lakes:new Uint8Array(data.lakes)});
-    world=n=>({height:(sampler.rendered(n)-1)*R,land:sampler.fields(n).land});return;
+    version++;setPlanetRadius(data.config.radius);const sampler=createSurfaceSampler({...data.config,terrain:new Uint8Array(data.terrain),lakes:new Uint8Array(data.lakes)});
+    world=n=>({height:(sampler.rendered(n)-1)*HEIGHT_METERS,land:sampler.fields(n).land});return;
   }
   if(data.type==='cancel'){version++;return;}
   if(data.type!=='plan'||!world)return;

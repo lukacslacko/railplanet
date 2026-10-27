@@ -1,4 +1,4 @@
-import {MAX_LAYERS, WAVES_PER_BAND, MOISTURE_WAVES, ELEVATION_GAIN, ELEVATION_OFFSET} from './noise.js?v=2.0.0';
+import {MAX_LAYERS, WAVES_PER_BAND, MOISTURE_WAVES, ELEVATION_GAIN, ELEVATION_OFFSET} from './noise.js?v=2.1.0';
 // Original GLSL, independent of terrain3d. Coordinates stay on a sphere, avoiding terrain seams.
 export const fullscreenVertex = `#version 300 es
 precision highp float;
@@ -102,17 +102,18 @@ uniform sampler2D slopeMap;
 precision highp usampler2D;
 uniform bool hasRail;
 uniform highp usampler2D railBins;
+uniform highp usampler2D railRanges;
 uniform sampler2D railData;
 ${surfaceCommon}
 
-// Spatial bins contain up to four short ranges of nearby route segments.
+// Spatial bins reference a variable-length list of short segment ranges.
 // Remove only the construction footprint; an explicit bed and banks close it.
 bool railwayFootprint(vec3 n){
   if(!hasRail)return false;
   ivec2 size=textureSize(railBins,0),cell=clamp(ivec2(coord(n)*vec2(size)),ivec2(0),size-1);
-  uvec4 ranges=texelFetch(railBins,cell,0);int dataWidth=textureSize(railData,0).x;
-  for(int r=0;r<4;r++){
-    uint packed=ranges[r];int start=int(packed>>8),count=int(packed&255u);
+  uvec4 bin=texelFetch(railBins,cell,0);int dataWidth=textureSize(railData,0).x,rangeWidth=textureSize(railRanges,0).x;
+  for(int r=0;r<int(bin.y);r++){
+    int scalar=int(bin.x)+r,index=scalar/4;uint packed=texelFetch(railRanges,ivec2(index%rangeWidth,index/rangeWidth),0)[scalar%4];int start=int(packed>>8),count=int(packed&255u);
     for(int j=0;j<64;j++){
       if(j>=count)break;int index=start+j;
       vec4 a=texelFetch(railData,ivec2(index%dataWidth,index/dataWidth),0);

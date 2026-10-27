@@ -5,7 +5,7 @@ const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]
 const unit=v=>{const length=Math.hypot(...v);return v.map(x=>x/length);};
 const clamp=(x,lo,hi)=>Math.max(lo,Math.min(hi,x));
 function rotate(v,axis,angle){const c=Math.cos(angle),s=Math.sin(angle),k=dot(axis,v),t=cross(axis,v);return v.map((x,i)=>x*c+t[i]*s+axis[i]*k*(1-c));}
-export const CLEARANCE=.003;
+export const CLEARANCE=.0003;
 export const START_HEIGHT=.022;
 export const METERS_PER_UNIT=65000;
 export function create(up,heading,surface){

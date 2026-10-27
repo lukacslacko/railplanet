@@ -95,3 +95,13 @@ input[type=range]::-moz-range-thumb{background:#c2d7b5;width:8px;height:8px;bord
 .rail-key{margin:14px 0 0}
 body.picking #planet{cursor:crosshair}
 .panel-title:disabled{opacity:.5;cursor:wait}
+
+.map-metrics{position:fixed;left:22px;bottom:16px;max-width:300px;padding:9px 12px;background:#172022df;border:1px solid var(--line);border-radius:7px;font-size:10px;line-height:1.8;color:#c5d2bf;pointer-events:none;font-variant-numeric:tabular-nums}
+#map-scale-line{height:7px;border:solid #c5d2bf;border-width:0 1px 2px;margin:1px 0 3px}
+#map-scale small{color:var(--muted);font-size:9px}
+#ground-info{margin:3px 0;color:#e1ebd9}
+#exaggeration-info{font-size:9px;color:var(--muted)}
+#rail-profile{width:100%;height:84px;margin:5px 0;color:var(--muted)}
+#rail-profile text{fill:#b4c3ad;font:8px system-ui,sans-serif}
+main{bottom:160px}
+@media(max-width:760px){.map-metrics{left:12px;bottom:74px;max-width:250px;font-size:9px;padding:5px 8px}main{bottom:220px}#map-scale small,#exaggeration-info{font-size:8px}}

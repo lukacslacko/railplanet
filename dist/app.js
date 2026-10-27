@@ -1,11 +1,12 @@
-import * as S from './shaders.js?v=2.0.0';
-import * as Orbit from './orbit.js?v=2.0.0';
-import {RailwayRenderer} from './rail-render.js?v=2.0.0';
-import {R as PLANET_METERS,unit as railUnit} from './rail.js?v=2.0.0';
-import * as Flight from './flight.js?v=2.0.0';
-import {createSurfaceSampler} from './surface.js?v=2.0.0';
-import {cubeSphereData} from './mesh.js?v=2.0.0';
-import {createNoise,normalizeNoiseSettings,MAX_LAYERS,WAVES_PER_BAND} from './noise.js?v=2.0.0';
+import * as S from './shaders.js?v=2.1.0';
+import * as Orbit from './orbit.js?v=2.1.0';
+import {RailwayRenderer} from './rail-render.js?v=2.1.0';
+import {R as PLANET_METERS,HEIGHT_METERS,setPlanetRadius} from './scale.js?v=2.1.0';
+import {unit as railUnit} from './rail.js?v=2.1.0';
+import * as Flight from './flight.js?v=2.1.0';
+import {createSurfaceSampler} from './surface.js?v=2.1.0';
+import {cubeSphereData} from './mesh.js?v=2.1.0';
+import {createNoise,normalizeNoiseSettings,MAX_LAYERS,WAVES_PER_BAND} from './noise.js?v=2.1.0';
 const $=id=>document.getElementById(id);
 const canvas=$('planet');
 const gl=canvas.getContext('webgl2',{antialias:true,alpha:false,powerPreference:'high-performance',depth:true,stencil:false});
@@ -15,7 +16,7 @@ function start(){
 const MAP_W=2048,MAP_H=1024;
 const homeDistance=()=>innerWidth<760?Math.max(3.95,innerHeight/innerWidth*3.2):3.95;
 const state={seed:'42',relief:1.4,sea:0,mode:0,quality:192,noise:normalizeNoiseSettings(),orientation:Orbit.home(),targetOrientation:Orbit.home(),distance:3.95,targetDistance:3.95,dirty:true,busy:false,water:0,max:0,job:0,triangles:0};
-let worker=new Worker('./hydrology.js?v=2.0.0'),mapPixels=null,mesh=null,pixelRatio=Math.min(devicePixelRatio,1.5),vp,cam=[0,0,3.95],lastTime=0;
+let worker=new Worker('./hydrology.js?v=2.1.0'),mapPixels=null,mesh=null,pixelRatio=Math.min(devicePixelRatio,1.5),vp,cam=[0,0,3.95],lastTime=0;
 let sun=[0,0,1],flight=null,surfaceAt=null,lakePixels=null,lakeWidth=MAP_W,lakeHeight=MAP_H;
 const held=new Set();
 const railway={points:[],selecting:false,pending:false,job:0,worker:null,lastPick:0,lastProgress:0};
@@ -125,7 +126,7 @@ function cameraMatrix(){
 }
 function bindSurface(p){gl.useProgram(p);gl.uniformMatrix4fv(loc(p,'viewProjection'),false,vp);gl.uniform3fv(loc(p,'camera'),cam);gl.uniform3fv(loc(p,'sun'),sun);gl.uniform1f(loc(p,'sea'),state.sea);gl.uniform1f(loc(p,'relief'),state.relief);gl.uniform1i(loc(p,'mode'),state.mode);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,terrainTexture);gl.uniform1i(loc(p,'terrain'),0);gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,drainageTexture);gl.uniform1i(loc(p,'drainage'),1);gl.activeTexture(gl.TEXTURE2);gl.bindTexture(gl.TEXTURE_2D,riverMaskTexture);gl.uniform1i(loc(p,'riverMask'),2);gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,slopeTexture);gl.uniform1i(loc(p,'slopeMap'),3);railwayRenderer.bindTerrain(p,loc);}
 function resize(){const w=Math.round(innerWidth*pixelRatio),h=Math.round(innerHeight*pixelRatio);if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;state.dirty=true;}}
-function draw(){resize();vp=cameraMatrix();gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,canvas.width,canvas.height);gl.clearColor(17/255,25/255,27/255,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.disable(gl.BLEND);bindSurface(programs.terrain);gl.bindVertexArray(mesh.vao);gl.drawElements(gl.TRIANGLES,mesh.count,gl.UNSIGNED_INT,0);railwayRenderer.draw(vp,cam,sun,canvas);gl.bindVertexArray(null);}
+function draw(){resize();vp=cameraMatrix();gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,canvas.width,canvas.height);gl.clearColor(17/255,25/255,27/255,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);gl.disable(gl.BLEND);bindSurface(programs.terrain);gl.bindVertexArray(mesh.vao);gl.drawElements(gl.TRIANGLES,mesh.count,gl.UNSIGNED_INT,0);railwayRenderer.draw(vp,cam,sun,canvas);gl.bindVertexArray(null);refreshMeasures();}
 function tick(now){
   requestAnimationFrame(tick);if(document.hidden){lastTime=now;return;}
   const dt=Math.min(Math.max(0,(now-lastTime)/1000),.05),amount=Math.min(1,dt*12);
@@ -188,33 +189,33 @@ function releaseControls(){held.clear();pointers.clear();pinchDistance=0;}
 window.addEventListener('blur',releaseControls);
 document.addEventListener('visibilitychange',releaseControls);
 document.addEventListener('focusin',e=>{if(e.target!==canvas)held.clear();});
-function railParameters(){return {speed:+$('rail-speed').value,maxGrade:+$('rail-grade').value/100,minRadius:+$('rail-radius').value,maxEarthwork:+$('rail-earthwork').value,earthworkCost:+$('rail-cost').value*.005,timeWeight:+$('rail-time').value};}
+function railParameters(){return {speed:+$('rail-speed').value,maxGrade:+$('rail-grade').value/100,minRadius:+$('rail-radius').value,maxEarthwork:+$('rail-earthwork').value,earthworkCost:+$('rail-cost').value*.005,timeWeight:+$('rail-time').value,maxBridge:+$('rail-bridge').value};}
 function resetRailway(message='Choose endpoints to start a new route.'){
   railway.job++;railway.worker?.terminate();railway.worker=null;railway.points=[];railway.selecting=false;railway.pending=false;
   railwayRenderer.clear();railwayRenderer.setMarkers([],surfaceAt);document.body.classList.remove('picking');
-  $('rail-status').textContent=message;$('rail-endpoints').hidden=true;$('rail-stats').hidden=true;$('rail-replan').disabled=true;$('rail-cancel').hidden=true;$('rail-pick').disabled=false;state.dirty=true;
+  $('rail-status').textContent=message;$('rail-endpoints').hidden=true;$('rail-stats').hidden=true;$('rail-profile').setAttribute('hidden','');$('rail-replan').disabled=true;$('rail-cancel').hidden=true;$('rail-pick').disabled=false;state.dirty=true;
 }
 function cancelRailway(){railway.job++;railway.worker?.postMessage({type:'cancel'});railway.pending=false;$('rail-cancel').hidden=true;$('rail-pick').disabled=false;$('rail-replan').disabled=railway.points.length<2;$('rail-status').textContent='Search cancelled.';}
 function chooseRailwayPoints(){
   if(state.busy||!lakePixels)return;
   cancelRailway();railway.points=[];railwayRenderer.clear();railwayRenderer.setMarkers([],surfaceAt);railway.selecting=true;
-  document.body.classList.add('picking');$('rail-stats').hidden=true;$('rail-endpoints').hidden=true;$('rail-replan').disabled=true;$('rail-status').textContent='Click the starting point on land.';state.dirty=true;
+  document.body.classList.add('picking');$('rail-stats').hidden=true;$('rail-profile').setAttribute('hidden','');$('rail-endpoints').hidden=true;$('rail-replan').disabled=true;$('rail-status').textContent='Click the starting point on land.';state.dirty=true;
 }
 function ensureRailwayWorker(){
   if(railway.worker)return railway.worker;
-  const w=new Worker('./rail-worker.js?v=2.0.0',{type:'module'}),terrain=mapPixels.slice(),lakes=lakePixels.slice();railway.worker=w;
-  w.postMessage({type:'init',terrain:terrain.buffer,lakes:lakes.buffer,config:{width:MAP_W,height:MAP_H,lakeWidth,lakeHeight,sea:state.sea,relief:state.relief,detail:state.quality}},[terrain.buffer,lakes.buffer]);
+  const w=new Worker('./rail-worker.js?v=2.1.0',{type:'module'}),terrain=mapPixels.slice(),lakes=lakePixels.slice();railway.worker=w;
+  w.postMessage({type:'init',terrain:terrain.buffer,lakes:lakes.buffer,config:{width:MAP_W,height:MAP_H,lakeWidth,lakeHeight,sea:state.sea,relief:state.relief,detail:state.quality,radius:PLANET_METERS}},[terrain.buffer,lakes.buffer]);
   w.onmessage=({data})=>{
     if(data.id!==railway.job)return;
-    if(data.type==='progress'){if(performance.now()-railway.lastProgress>200){$('rail-status').textContent=data.stage+': '+data.expanded.toLocaleString()+' states.';railway.lastProgress=performance.now();}return;}
+    if(data.type==='progress'){if(performance.now()-railway.lastProgress>200){$('rail-status').textContent=data.stage+(data.stage==='Finding land corridors'||data.stage==='Coarse alternatives'||data.stage.startsWith('Refining corridor')?': '+data.expanded.toLocaleString()+' states.':'…');railway.lastProgress=performance.now();}return;}
     railway.pending=false;$('rail-cancel').hidden=true;$('rail-pick').disabled=false;$('rail-replan').disabled=false;
     const r=data.result;
     if(r.error){$('rail-status').textContent=r.error;return;}
     try{railwayRenderer.setRoute(r,surfaceAt);}catch(error){$('rail-status').textContent=error.message;state.dirty=true;return;}
     const minRadius=Number.isFinite(r.minRadius)&&r.minRadius<1e8?Math.round(r.minRadius).toLocaleString()+' m':'Straight';
-    const values=[['Distance',(r.length/1000).toFixed(2)+' km'],['Journey time',(r.seconds/60).toFixed(1)+' min'],['Maximum grade',(r.maxGrade*100).toFixed(2)+'%'],['Minimum radius',minRadius],['Earthwork',Math.round(r.volume).toLocaleString()+' m³'],['Largest cut/fill',r.maxWork.toFixed(1)+' m']];
-    $('rail-stats').replaceChildren();for(const[name,value]of values){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=name;dd.textContent=value;$('rail-stats').append(dt,dd);}$('rail-stats').hidden=false;
-    $('rail-status').textContent='Approximate route · '+r.alternatives+' feasible alternatives · '+(r.milliseconds/1000).toFixed(1)+' s search.';state.dirty=true;
+    const values=[['Distance',(r.length/1000).toFixed(2)+' km'],['Journey time',(r.seconds/60).toFixed(1)+' min'],['Maximum grade',(r.maxGrade*100).toFixed(2)+'%'],['Minimum radius',minRadius],['Earthwork',Math.round(r.volume).toLocaleString()+' m³'],['Largest cut/fill',r.maxWork.toFixed(1)+' m'],['Bridges',(r.bridgeLength/1000).toFixed(2)+' km'],['Highest bridge',r.maxBridgeHeight.toFixed(1)+' m']];
+    $('rail-stats').replaceChildren();for(const[name,value]of values){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=name;dd.textContent=value;$('rail-stats').append(dt,dd);}$('rail-stats').hidden=false;drawProfile(r);
+    $('rail-status').textContent='Route found · '+(r.milliseconds/1000).toFixed(1)+' s search.';state.dirty=true;
     console.info('Railway ready '+JSON.stringify({length:r.length,seconds:r.seconds,maxGrade:r.maxGrade,minRadius:r.minRadius,maxWork:r.maxWork,volume:r.volume,alternatives:r.alternatives,expanded:r.expanded}));
   };
   w.onerror=()=>{railway.pending=false;$('rail-cancel').hidden=true;$('rail-pick').disabled=false;$('rail-replan').disabled=false;$('rail-status').textContent='Routing failed. Replan to retry.';w.terminate();railway.worker=null;};
@@ -222,15 +223,15 @@ function ensureRailwayWorker(){
 }
 function updateRailEndpointSummary(){
   if(!railway.points.length){$('rail-endpoints').hidden=true;return;}
-  const heights=railway.points.map(n=>(surfaceAt.rendered(n)-1)*PLANET_METERS);let text='Elevation: '+heights.map(h=>Math.round(h).toLocaleString()+' m').join(' → ');
-  if(heights.length===2){const minimum=Math.abs(heights[1]-heights[0])/railParameters().maxGrade/1000;const a=railway.points[0],b=railway.points[1],angle=Math.acos(Math.min(1,a.reduce((s,v,i)=>s+v*b[i],0)));if(minimum>angle*PLANET_METERS/1000*1.5)text+=' · at least '+minimum.toFixed(1)+' km needed for this elevation change.';}
+  const heights=railway.points.map(n=>(surfaceAt.rendered(n)-1)*HEIGHT_METERS);let text='Elevation: '+heights.map(h=>(Math.round(h)||0).toLocaleString()+' m').join(' → ');
+  if(heights.length===2){const minimum=Math.abs(heights[1]-heights[0])/railParameters().maxGrade/1000;const a=railway.points[0],b=railway.points[1],angle=Math.acos(Math.min(1,a.reduce((s,v,i)=>s+v*b[i],0)));text+=' · '+(angle*PLANET_METERS/1000).toFixed(1)+' km apart';if(minimum>angle*PLANET_METERS/1000*1.5)text+=' · at least '+minimum.toFixed(1)+' km needed for this elevation change.';}
   $('rail-endpoints').textContent=text;$('rail-endpoints').hidden=false;
 }
 function planRailway(){
   if(railway.points.length!==2||state.busy)return;
-  railway.selecting=false;document.body.classList.remove('picking');railwayRenderer.clear();$('rail-stats').hidden=true;railway.pending=true;
+  railway.selecting=false;document.body.classList.remove('picking');railwayRenderer.clear();$('rail-stats').hidden=true;$('rail-profile').setAttribute('hidden','');railway.pending=true;
   $('rail-replan').disabled=true;$('rail-pick').disabled=true;$('rail-cancel').hidden=false;$('rail-status').textContent='Searching land routes…';
-  console.info('Railway endpoints '+JSON.stringify({start:railway.points[0],end:railway.points[1],startHeight:(surfaceAt.rendered(railway.points[0])-1)*PLANET_METERS,endHeight:(surfaceAt.rendered(railway.points[1])-1)*PLANET_METERS}));
+  console.info('Railway endpoints '+JSON.stringify({start:railway.points[0],end:railway.points[1],startHeight:(surfaceAt.rendered(railway.points[0])-1)*HEIGHT_METERS,endHeight:(surfaceAt.rendered(railway.points[1])-1)*HEIGHT_METERS}));
   ensureRailwayWorker().postMessage({type:'plan',id:++railway.job,start:railway.points[0],end:railway.points[1],parameters:railParameters()});state.dirty=true;
 }
 function pickSurface(clientX,clientY){
@@ -257,10 +258,43 @@ function pickRailwayPoint(event){
 }
 $('rail-toggle').onclick=()=>{const open=$('rail-toggle').getAttribute('aria-expanded')==='true';$('rail-toggle').setAttribute('aria-expanded',!open);$('rail-body').hidden=open;if(open){railway.selecting=false;document.body.classList.remove('picking');}else if(!railway.points.length)chooseRailwayPoints();else if(railway.points.length===1){railway.selecting=true;document.body.classList.add('picking');$('rail-status').textContent='Click the destination on land.';}};
 $('rail-pick').onclick=chooseRailwayPoints;$('rail-replan').onclick=planRailway;$('rail-clear').onclick=()=>{resetRailway();chooseRailwayPoints();};$('rail-cancel').onclick=cancelRailway;
-for(const[id,format]of[['rail-speed',v=>v+' km/h'],['rail-grade',v=>(+v).toFixed(1)+'%'],['rail-radius',v=>v+' m'],['rail-earthwork',v=>v+' m'],['rail-cost',v=>v],['rail-time',v=>(+v).toFixed(1)]]){
-  $(id).oninput=()=>{$(id+'-value').value=format($(id).value);rangeFill($(id));updateRailEndpointSummary();};
+for(const[id,format]of[['rail-speed',v=>v+' km/h'],['rail-grade',v=>(+v).toFixed(1)+'%'],['rail-radius',v=>v+' m'],['rail-earthwork',v=>v+' m'],['rail-cost',v=>v],['rail-time',v=>(+v).toFixed(1)],['rail-bridge',v=>v+' m']]){
+  $(id).oninput=()=>{$(id+'-value').value=format($(id).value);rangeFill($(id));updateRailEndpointSummary();$('rail-radius-hint').textContent='At '+$('rail-radius').value+' m radius, curve speed is about '+Math.round(Math.sqrt(.65*+$('rail-radius').value)*3.6)+' km/h in this model.';};
   $(id).onchange=()=>{if(railway.pending)cancelRailway();if(railway.points.length===2)$('rail-status').textContent='Parameters changed. Replan to apply.';};rangeFill($(id));
 }
+
+function drawProfile(route){
+  const svg=$('rail-profile'),ns='http://www.w3.org/2000/svg',ps=route.points.filter((_,i)=>i%Math.max(1,Math.floor(route.points.length/220))===0||i===route.points.length-1);
+  const low=Math.min(...ps.map(p=>Math.min(p.h,p.ground))),high=Math.max(...ps.map(p=>Math.max(p.h,p.ground))),range=Math.max(20,high-low),y=h=>65-(h-low)/range*47;
+  svg.replaceChildren();
+  const add=(name,attrs,text)=>{const el=document.createElementNS(ns,name);for(const[k,v]of Object.entries(attrs))el.setAttribute(k,v);if(text)el.textContent=text;svg.append(el);};
+  for(const[key,color]of[['ground','#8caa73'],['h','#f0d498']])add('polyline',{points:ps.map(p=>(8+p.station/route.length*204).toFixed(1)+','+y(p[key]).toFixed(1)).join(' '),fill:'none',stroke:color,'stroke-width':key==='h'?1.6:1});
+  add('text',{x:8,y:10},Math.round(high).toLocaleString()+' m');add('text',{x:8,y:71},Math.round(low).toLocaleString()+' m');add('text',{x:144,y:10,'text-anchor':'end',style:'fill:#8caa73'},'Ground');add('text',{x:212,y:10,'text-anchor':'end',style:'fill:#f0d498'},'Track');add('text',{x:8,y:80},'0');add('text',{x:212,y:80,'text-anchor':'end'},(route.length/1000).toFixed(1)+' km');
+  svg.removeAttribute('hidden');
+}
+let hoverPoint=null,lastMeasure=0,lastScaleMeasure=0;
+function describeGround(n){
+ const h=(surfaceAt.rendered(n)-1)*HEIGHT_METERS,east=railUnit([n[2],0,-n[0]].some(v=>Math.abs(v)>.001)?[n[2],0,-n[0]]:[1,0,0]),north=[n[1]*east[2]-n[2]*east[1],n[2]*east[0]-n[0]*east[2],n[0]*east[1]-n[1]*east[0]],span=100;
+ const slope=axis=>{const a=railUnit(n.map((v,k)=>v+axis[k]*span/PLANET_METERS)),b=railUnit(n.map((v,k)=>v-axis[k]*span/PLANET_METERS));return (surfaceAt.rendered(a)-surfaceAt.rendered(b))*HEIGHT_METERS/(2*span);};
+ const grade=Math.hypot(slope(east),slope(north));return (Math.round(h)||0).toLocaleString()+' m · ground slope '+(grade*100).toFixed(1)+'% ('+(Math.atan(grade)*180/Math.PI).toFixed(1)+'°)';
+}
+function refreshMeasures(){
+ if(!surfaceAt||state.busy||performance.now()-lastScaleMeasure<120)return;lastScaleMeasure=performance.now();
+ const x=innerWidth*(flight?.5:innerWidth>760?.59:.5),y=innerHeight*(flight?.65:innerWidth>760?.5075:.425),a=pickSurface(x-45,y),b=pickSurface(x+45,y);
+ if(a&&b){const angle=Math.atan2(Math.hypot(a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]),Math.min(1,a.reduce((s,v,i)=>s+v*b[i],0))),perPixel=angle*PLANET_METERS/90,power=10**Math.floor(Math.log10(perPixel*130)),value=[1,2,5,10].map(n=>n*power).filter(n=>n/perPixel<=180).at(-1)||power;
+ $('map-scale-line').style.width=Math.max(1,value/perPixel)+'px';$('map-scale-distance').textContent=value>=1000?(value/1000).toFixed(value%1000?1:0)+' km':Math.round(value)+' m';$('map-scale').hidden=false;
+ }else $('map-scale').hidden=true;
+ const n=hoverPoint||pickSurface(x,y);if(n)$('ground-info').textContent=describeGround(n);
+}
+canvas.addEventListener('pointermove',e=>{if(pointers.size||state.busy||performance.now()-lastMeasure<120)return;lastMeasure=performance.now();hoverPoint=pickSurface(e.clientX,e.clientY);if(hoverPoint)$('ground-info').textContent=describeGround(hoverPoint);});
+canvas.addEventListener('pointerleave',()=>{hoverPoint=null;});
+function updatePlanetScale(){
+ lastScaleMeasure=0;setPlanetRadius(+$('planet-radius').value*1000);$('planet-radius-value').value=(PLANET_METERS/1000).toLocaleString()+' km';rangeFill($('planet-radius'));
+ $('planet-scale-info').textContent='Radius '+(PLANET_METERS/1000).toLocaleString()+' km · equator '+Math.round(2*Math.PI*PLANET_METERS/1000).toLocaleString()+' km';
+ $('exaggeration-info').textContent='Height shown '+(PLANET_METERS/HEIGHT_METERS).toFixed(1)+'× taller relative to distance';
+ state.dirty=true;
+}
+$('planet-radius').oninput=()=>{resetRailway('Scale changed. Choose endpoints again.');updatePlanetScale();const url=new URL(location.href);url.searchParams.set('radius',PLANET_METERS/1000);history.replaceState(null,'',url);};
 $('generate').onclick=generate;$('seed').addEventListener('keydown',e=>{if(e.key==='Enter')generate();});
 $('random-seed').onclick=()=>{if(state.busy)return;const a=new Uint32Array(1);crypto.getRandomValues(a);$('seed').value=String(a[0]%1000000);generate();};
 $('relief').oninput=e=>{resetRailway('Terrain changed. Choose endpoints again.');state.relief=+e.target.value;$('relief-value').value=state.relief.toFixed(1)+'×';rangeFill(e.target);refreshSurface();state.dirty=true;};
@@ -280,6 +314,7 @@ canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();showError('The
 // Let the browser suspend the worker when this page enters its back/forward cache.
 if(innerWidth<760)state.distance=state.targetDistance=homeDistance();
 const params=new URLSearchParams(location.search),seedParam=params.get('seed');if(seedParam)$('seed').value=seedParam.slice(0,20);
+if(params.has('radius'))$('planet-radius').value=+params.get('radius');updatePlanetScale();
 const initialNoise=normalizeNoiseSettings({frequency:params.get('frequency'),color:params.get('color'),layers:params.get('layers')});
 $('frequency').value=initialNoise.frequency;$('noise-color').value=initialNoise.color;$('layers').value=initialNoise.layers;
 for(const id of ['frequency','noise-color','layers'])$(id).oninput();

@@ -35,6 +35,6 @@ const loop=Array.from({length:97},(_,i)=>({n:point(500*Math.sin(i*2*Math.PI/96),
 assert(!evaluate(loop,flat,DEFAULTS),'unsupported self-crossing or overlapping track must be rejected');
 assert((await planRoute(start,end,()=>({height:0,land:false}))).error,'water endpoints must be rejected');
 const seam=await planRoute(unit([-1,0,.015]),unit([-1,0,-.015]),flat);
-assert(!seam.error&&seam.length<2500,'short route must cross the longitude seam without a world-sized detour');
+assert(!seam.error&&seam.length<R*.04,'short route must cross the longitude seam without a world-sized detour');
 await assert.rejects(()=>planRoute(start,end,lake,{}, {cancelled:()=>true}),/cancelled/,'search cancellation must interrupt the worker loop');
 console.log('Railways verified: direct routes, lake avoidance, pass discovery, rotation/seam continuity, exact endpoints, grade/curvature limits, earthwork costs, speed/acceleration envelopes, and cancellation.');
