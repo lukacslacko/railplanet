@@ -1,12 +1,12 @@
-import * as S from './shaders.js?v=2.1.0';
-import * as Orbit from './orbit.js?v=2.1.0';
-import {RailwayRenderer} from './rail-render.js?v=2.1.0';
-import {R as PLANET_METERS,HEIGHT_METERS,setPlanetRadius} from './scale.js?v=2.1.0';
-import {unit as railUnit} from './rail.js?v=2.1.0';
-import * as Flight from './flight.js?v=2.1.0';
-import {createSurfaceSampler} from './surface.js?v=2.1.0';
-import {cubeSphereData} from './mesh.js?v=2.1.0';
-import {createNoise,normalizeNoiseSettings,MAX_LAYERS,WAVES_PER_BAND} from './noise.js?v=2.1.0';
+import * as S from './shaders.js?v=2.2.0';
+import * as Orbit from './orbit.js?v=2.2.0';
+import {RailwayRenderer} from './rail-render.js?v=2.2.0';
+import {R as PLANET_METERS,HEIGHT_METERS,setPlanetRadius} from './scale.js?v=2.2.0';
+import {unit as railUnit} from './rail.js?v=2.2.0';
+import * as Flight from './flight.js?v=2.2.0';
+import {createSurfaceSampler} from './surface.js?v=2.2.0';
+import {cubeSphereData} from './mesh.js?v=2.2.0';
+import {createNoise,normalizeNoiseSettings,MAX_LAYERS,WAVES_PER_BAND} from './noise.js?v=2.2.0';
 const $=id=>document.getElementById(id);
 const canvas=$('planet');
 const gl=canvas.getContext('webgl2',{antialias:true,alpha:false,powerPreference:'high-performance',depth:true,stencil:false});
@@ -16,7 +16,7 @@ function start(){
 const MAP_W=2048,MAP_H=1024;
 const homeDistance=()=>innerWidth<760?Math.max(3.95,innerHeight/innerWidth*3.2):3.95;
 const state={seed:'42',relief:1.4,sea:0,mode:0,quality:192,noise:normalizeNoiseSettings(),orientation:Orbit.home(),targetOrientation:Orbit.home(),distance:3.95,targetDistance:3.95,dirty:true,busy:false,water:0,max:0,job:0,triangles:0};
-let worker=new Worker('./hydrology.js?v=2.1.0'),mapPixels=null,mesh=null,pixelRatio=Math.min(devicePixelRatio,1.5),vp,cam=[0,0,3.95],lastTime=0;
+let worker=new Worker('./hydrology.js?v=2.2.0'),mapPixels=null,mesh=null,pixelRatio=Math.min(devicePixelRatio,1.5),vp,cam=[0,0,3.95],lastTime=0;
 let sun=[0,0,1],flight=null,surfaceAt=null,lakePixels=null,lakeWidth=MAP_W,lakeHeight=MAP_H;
 const held=new Set();
 const railway={points:[],selecting:false,pending:false,job:0,worker:null,lastPick:0,lastProgress:0};
@@ -189,7 +189,7 @@ function releaseControls(){held.clear();pointers.clear();pinchDistance=0;}
 window.addEventListener('blur',releaseControls);
 document.addEventListener('visibilitychange',releaseControls);
 document.addEventListener('focusin',e=>{if(e.target!==canvas)held.clear();});
-function railParameters(){return {speed:+$('rail-speed').value,maxGrade:+$('rail-grade').value/100,minRadius:+$('rail-radius').value,maxEarthwork:+$('rail-earthwork').value,earthworkCost:+$('rail-cost').value*.005,timeWeight:+$('rail-time').value,maxBridge:+$('rail-bridge').value};}
+function railParameters(){return {speed:+$('rail-speed').value,maxGrade:+$('rail-grade').value/100,minRadius:+$('rail-radius').value,maxEarthwork:+$('rail-earthwork').value,earthworkCost:+$('rail-cost').value*.005,timeWeight:+$('rail-time').value,maxBridge:+$('rail-bridge').value,passPreference:+$('rail-pass').value};}
 function resetRailway(message='Choose endpoints to start a new route.'){
   railway.job++;railway.worker?.terminate();railway.worker=null;railway.points=[];railway.selecting=false;railway.pending=false;
   railwayRenderer.clear();railwayRenderer.setMarkers([],surfaceAt);document.body.classList.remove('picking');
@@ -203,7 +203,7 @@ function chooseRailwayPoints(){
 }
 function ensureRailwayWorker(){
   if(railway.worker)return railway.worker;
-  const w=new Worker('./rail-worker.js?v=2.1.0',{type:'module'}),terrain=mapPixels.slice(),lakes=lakePixels.slice();railway.worker=w;
+  const w=new Worker('./rail-worker.js?v=2.2.0',{type:'module'}),terrain=mapPixels.slice(),lakes=lakePixels.slice();railway.worker=w;
   w.postMessage({type:'init',terrain:terrain.buffer,lakes:lakes.buffer,config:{width:MAP_W,height:MAP_H,lakeWidth,lakeHeight,sea:state.sea,relief:state.relief,detail:state.quality,radius:PLANET_METERS}},[terrain.buffer,lakes.buffer]);
   w.onmessage=({data})=>{
     if(data.id!==railway.job)return;
@@ -214,9 +214,10 @@ function ensureRailwayWorker(){
     try{railwayRenderer.setRoute(r,surfaceAt);}catch(error){$('rail-status').textContent=error.message;state.dirty=true;return;}
     const minRadius=Number.isFinite(r.minRadius)&&r.minRadius<1e8?Math.round(r.minRadius).toLocaleString()+' m':'Straight';
     const values=[['Distance',(r.length/1000).toFixed(2)+' km'],['Journey time',(r.seconds/60).toFixed(1)+' min'],['Maximum grade',(r.maxGrade*100).toFixed(2)+'%'],['Minimum radius',minRadius],['Earthwork',Math.round(r.volume).toLocaleString()+' m³'],['Largest cut/fill',r.maxWork.toFixed(1)+' m'],['Bridges',(r.bridgeLength/1000).toFixed(2)+' km'],['Highest bridge',r.maxBridgeHeight.toFixed(1)+' m']];
+    if(r.passGuidance?.used)values.push(['Preferred passes',String(r.passGuidance.used)]);
     $('rail-stats').replaceChildren();for(const[name,value]of values){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=name;dd.textContent=value;$('rail-stats').append(dt,dd);}$('rail-stats').hidden=false;drawProfile(r);
     $('rail-status').textContent='Route found · '+(r.milliseconds/1000).toFixed(1)+' s search.';state.dirty=true;
-    console.info('Railway ready '+JSON.stringify({length:r.length,seconds:r.seconds,maxGrade:r.maxGrade,minRadius:r.minRadius,maxWork:r.maxWork,volume:r.volume,alternatives:r.alternatives,expanded:r.expanded}));
+    console.info('Railway ready '+JSON.stringify({length:r.length,seconds:r.seconds,maxGrade:r.maxGrade,minRadius:r.minRadius,maxWork:r.maxWork,volume:r.volume,alternatives:r.alternatives,expanded:r.expanded,passGuidance:r.passGuidance}));
   };
   w.onerror=()=>{railway.pending=false;$('rail-cancel').hidden=true;$('rail-pick').disabled=false;$('rail-replan').disabled=false;$('rail-status').textContent='Routing failed. Replan to retry.';w.terminate();railway.worker=null;};
   return w;
@@ -258,7 +259,7 @@ function pickRailwayPoint(event){
 }
 $('rail-toggle').onclick=()=>{const open=$('rail-toggle').getAttribute('aria-expanded')==='true';$('rail-toggle').setAttribute('aria-expanded',!open);$('rail-body').hidden=open;if(open){railway.selecting=false;document.body.classList.remove('picking');}else if(!railway.points.length)chooseRailwayPoints();else if(railway.points.length===1){railway.selecting=true;document.body.classList.add('picking');$('rail-status').textContent='Click the destination on land.';}};
 $('rail-pick').onclick=chooseRailwayPoints;$('rail-replan').onclick=planRailway;$('rail-clear').onclick=()=>{resetRailway();chooseRailwayPoints();};$('rail-cancel').onclick=cancelRailway;
-for(const[id,format]of[['rail-speed',v=>v+' km/h'],['rail-grade',v=>(+v).toFixed(1)+'%'],['rail-radius',v=>v+' m'],['rail-earthwork',v=>v+' m'],['rail-cost',v=>v],['rail-time',v=>(+v).toFixed(1)],['rail-bridge',v=>v+' m']]){
+for(const[id,format]of[['rail-speed',v=>v+' km/h'],['rail-grade',v=>(+v).toFixed(1)+'%'],['rail-radius',v=>v+' m'],['rail-earthwork',v=>v+' m'],['rail-cost',v=>v],['rail-time',v=>(+v).toFixed(1)],['rail-bridge',v=>v+' m'],['rail-pass',v=>(+v).toFixed(2)]]){
   $(id).oninput=()=>{$(id+'-value').value=format($(id).value);rangeFill($(id));updateRailEndpointSummary();$('rail-radius-hint').textContent='At '+$('rail-radius').value+' m radius, curve speed is about '+Math.round(Math.sqrt(.65*+$('rail-radius').value)*3.6)+' km/h in this model.';};
   $(id).onchange=()=>{if(railway.pending)cancelRailway();if(railway.points.length===2)$('rail-status').textContent='Parameters changed. Replan to apply.';};rangeFill($(id));
 }

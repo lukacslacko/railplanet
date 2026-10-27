@@ -5,7 +5,7 @@
 <meta name="theme-color" content="#11191b">
 <meta name="description" content="WebGL planet with configurable terrain, lakes, glaciers, and two-point railway route planning.">
 <title>Railplanet</title>
-<link rel="stylesheet" href="style.css?v=2.1.0">
+<link rel="stylesheet" href="style.css?v=2.2.0">
 </head>
 <body>
 <canvas id="planet" tabindex="0" aria-label="Interactive 3D planet. Drag to rotate, scroll to zoom. Arrow keys rotate; plus and minus zoom."></canvas>
@@ -56,6 +56,7 @@
         <label class="slider-label" for="rail-bridge">Maximum bridge height <output id="rail-bridge-value">300 m</output></label><input id="rail-bridge" type="range" min="0" max="1500" step="50" value="300"><p class="setting-hint">Viaducts can replace tall fills. Set 0 to disable. Rivers can be crossed freely.</p>
         <label class="slider-label" for="rail-cost">Earthwork penalty <output id="rail-cost-value">5</output></label><input id="rail-cost" type="range" min="1" max="20" step="1" value="5">
         <label class="slider-label" for="rail-time">Travel time weight <output id="rail-time-value">0.6</output></label><input id="rail-time" type="range" min="0" max="2" step="0.1" value="0.6">
+        <label class="slider-label" for="rail-pass">Pass preference <output id="rail-pass-value">1.00</output></label><input id="rail-pass" type="range" min="0" max="2" step="0.25" value="1"><p class="setting-hint">Favor nearby, well-defined saddles when crossing ridges. 0 disables this preference.</p>
         <p class="setting-hint">Distance always has a cost. Earthwork is charged by volume. Curves, grades, acceleration, and braking affect the estimated journey time. Oceans and lakes are blocked; no tunnels.</p>
       </details>
       <p class="setting-hint rail-key">Route colour: green faster · amber slower.</p>
@@ -68,6 +69,6 @@
 <div id="flight-info" class="flight-info" hidden><output id="flight-height" aria-live="off"></output><span>W/S forward/back · A/D yaw · Q/E down/up</span></div>
 <aside class="map-metrics" aria-label="Map measurements"><div id="map-scale" hidden><span id="map-scale-distance"></span><div id="map-scale-line"></div><small>Distance at view centre</small></div><div id="ground-info"></div><div id="planet-scale-info"></div><div id="exaggeration-info"></div></aside>
 <div class="zoom-controls"><button id="zoom-in" aria-label="Zoom in">+</button><span></span><button id="zoom-out" aria-label="Zoom out">−</button></div>
-<script type="module" src="app.js?v=2.1.0"></script>
+<script type="module" src="app.js?v=2.2.0"></script>
 </body>
 </html>

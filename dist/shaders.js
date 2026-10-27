@@ -1,4 +1,4 @@
-import {MAX_LAYERS, WAVES_PER_BAND, MOISTURE_WAVES, ELEVATION_GAIN, ELEVATION_OFFSET} from './noise.js?v=2.1.0';
+import {MAX_LAYERS, WAVES_PER_BAND, MOISTURE_WAVES, ELEVATION_GAIN, ELEVATION_OFFSET} from './noise.js?v=2.2.0';
 // Original GLSL, independent of terrain3d. Coordinates stay on a sphere, avoiding terrain seams.
 export const fullscreenVertex = `#version 300 es
 precision highp float;

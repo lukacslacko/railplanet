@@ -1,6 +1,7 @@
 // Terrain corridors first, engineering profile second. A coarse grid does not
 // need to commit to an exact track height or a particular 650 m circular arc.
-import {R,unit,cross,dot,tangent,distance,angle,clamp,evaluate} from './rail.js?v=2.1.0';
+import {guidePasses} from './passes.js?v=2.2.0';
+import {R,unit,cross,dot,tangent,distance,angle,clamp,evaluate} from './rail.js?v=2.2.0';
 class Heap{
  constructor(){this.a=[];} push(n){let i=this.a.length;this.a.push(n);while(i){const j=(i-1)>>1;if(this.a[j].f<=n.f)break;this.a[i]=this.a[j];i=j;}this.a[i]=n;}
  pop(){const a=this.a,n=a[0],v=a.pop();if(a.length){let i=0;while(2*i+1<a.length){let j=2*i+1;if(j+1<a.length&&a[j+1].f<a[j].f)j++;if(a[j].f>=v.f)break;a[i]=a[j];i=j;}a[i]=v;}return n;} get size(){return this.a.length;}
@@ -76,24 +77,28 @@ async function gridRoute(start,end,map,world,p,{spacing,margin,gradeWeight,penal
  }
  return null;
 }
+async function fitPath(path,start,end,map,world,p,hooks,maxSmooth=7){
+ if(path.geometry){const profile=fitProfile(path.geometry,world,p);return profile?evaluate(profile,world,p):null;}
+ let controls=simplify(path,Math.max(2,Math.min(180,p.minRadius*.3)));
+ for(let smooth=0;smooth<maxSmooth;smooth++){
+  const geometry=spline(controls,map,clamp(distance(start,end)/5000,20,50));geometry[0].n=start.slice();geometry.at(-1).n=end.slice();
+  const profile=fitProfile(geometry,world,p);if(profile){const result=evaluate(profile,world,p);if(result)return result;}
+  if(controls.length===2)break;controls=roundControls(controls,.22);await pause();if(hooks.cancelled?.())throw Error('cancelled');
+ }
+ return null;
+}
+export async function improvePasses(result,start,end,world,p,hooks={}){
+ const map=chart(start,end),candidates=[result],attempt=async(path,smooth)=>{const r=await fitPath(path,start,end,map,world,p,hooks,smooth);if(r)candidates.push(r);return r;};
+ await guidePasses(candidates,map,world,p,hooks,attempt);candidates.sort((a,b)=>a.score-b.score);return {...candidates[0],expanded:result.expanded,alternatives:candidates.length,parameters:p};
+}
 export async function hierarchicalRoute(start,end,world,p,hooks={}){
  if(hooks.cancelled?.())throw Error('cancelled');
  const direct=distance(start,end);if(angle(start,end)>Math.PI-.0001)return null;
  const map=chart(start,end),candidates=[];let expanded=0,lastPath=null;
- const attempt=async(path)=>{
-  let controls=simplify(path,Math.max(2,Math.min(180,p.minRadius*.3)));
-  // Smoothing progressively rounds grid corners; endpoints remain exact.
-  for(let smooth=0;smooth<7;smooth++){
-   const geometry=spline(controls,map,clamp(direct/5000,20,50));geometry[0].n=start.slice();geometry.at(-1).n=end.slice();
-   const profile=fitProfile(geometry,world,p);
-   if(profile){const result=evaluate(profile,world,p);if(result){candidates.push(result);return true;}}
-   if(controls.length===2)break;
-   controls=roundControls(controls,.22);await pause();if(hooks.cancelled?.())throw Error('cancelled');
-  }
-  return false;
- };
+ const attempt=async(path,maxSmooth=7)=>{const result=await fitPath(path,start,end,map,world,p,hooks,maxSmooth);if(result)candidates.push(result);return result;};
+ const finish=async()=>{await guidePasses(candidates,map,world,p,hooks,attempt);candidates.sort((a,b)=>a.score-b.score);return {...candidates[0],alternatives:candidates.length,expanded};};
  hooks.progress?.('Fitting direct profile',0,1);await attempt([map.xy(start),map.xy(end)]);
- if(candidates.length&&candidates[0].score<direct*1.08)return {...candidates[0],alternatives:1,expanded};
+ if(candidates.length&&candidates[0].score<direct*1.08)return finish();
  const spacing=Math.max(direct/150,clamp(direct/85,Math.max(150,p.minRadius*1.8),3200));
  for(let pass=0;pass<4;pass++){
   const step=spacing*(pass===2?.55:pass===3?1.25:1),margin=Math.max(5000,direct*(pass===3?1:.45));
@@ -107,5 +112,5 @@ export async function hierarchicalRoute(start,end,world,p,hooks={}){
  candidates.sort((a,b)=>a.score-b.score);let best=candidates[0];
  const stride=Math.max(2,Math.round(best.points.length/80)),guide=best.points.filter((_,i)=>i%stride===0||i===best.points.length-1).map(p=>map.xy(p.n));
  for(let pass=0;pass<2;pass++){const before=candidates.length;await attempt(roundControls(guide,.15+pass*.15));if(candidates.length>before)candidates.sort((a,b)=>a.score-b.score);}
- best=candidates[0];return {...best,alternatives:candidates.length,expanded};
+ return finish();
 }

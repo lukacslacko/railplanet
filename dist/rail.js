@@ -1,7 +1,7 @@
 // Railway metrics, engineering validation, and a continuous-heading fallback.
-import {R} from './scale.js?v=2.1.0';
-export {R} from './scale.js?v=2.1.0';
-export const DEFAULTS=Object.freeze({speed:120,maxGrade:.03,minRadius:300,maxEarthwork:60,earthworkCost:.025,timeWeight:.6,maxBridge:300,bridgeCost:5});
+import {R} from './scale.js?v=2.2.0';
+export {R} from './scale.js?v=2.2.0';
+export const DEFAULTS=Object.freeze({speed:120,maxGrade:.03,minRadius:300,maxEarthwork:60,earthworkCost:.025,timeWeight:.6,maxBridge:300,bridgeCost:5,passPreference:1});
 export const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
 export const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
 export const unit=v=>{const r=Math.hypot(...v);return v.map(x=>x/r);};
@@ -10,7 +10,7 @@ export const angle=(a,b)=>Math.atan2(Math.hypot(...cross(a,b)),clamp(dot(a,b),-1
 export const distance=(a,b)=>angle(a,b)*R;
 export function rotate(v,axis,a){const c=Math.cos(a),s=Math.sin(a),k=dot(axis,v),t=cross(axis,v);return v.map((x,i)=>x*c+t[i]*s+axis[i]*k*(1-c));}
 export function tangent(a,b){const k=dot(a,b),v=b.map((x,i)=>x-a[i]*k);return Math.hypot(...v)>1e-9?unit(v):unit(cross(a,Math.abs(a[1])<.9?[0,1,0]:[1,0,0]));}
-export function parameters(p={}){return {speed:clamp(+p.speed||120,40,200),maxGrade:clamp(+p.maxGrade||.03,.005,.1),minRadius:clamp(+p.minRadius||300,80,2000),maxEarthwork:clamp(Number.isFinite(+p.maxEarthwork)?+p.maxEarthwork:60,0,150),earthworkCost:clamp(Number.isFinite(+p.earthworkCost)?+p.earthworkCost:.025,.001,.15),timeWeight:clamp(Number.isFinite(+p.timeWeight)?+p.timeWeight:.6,0,2),maxBridge:clamp(Number.isFinite(+p.maxBridge)?+p.maxBridge:300,0,1500),bridgeCost:clamp(+p.bridgeCost||5,1,30)};}
+export function parameters(p={}){return {speed:clamp(+p.speed||120,40,200),maxGrade:clamp(+p.maxGrade||.03,.005,.1),minRadius:clamp(+p.minRadius||300,80,2000),maxEarthwork:clamp(Number.isFinite(+p.maxEarthwork)?+p.maxEarthwork:60,0,150),earthworkCost:clamp(Number.isFinite(+p.earthworkCost)?+p.earthworkCost:.025,.001,.15),timeWeight:clamp(Number.isFinite(+p.timeWeight)?+p.timeWeight:.6,0,2),maxBridge:clamp(Number.isFinite(+p.maxBridge)?+p.maxBridge:300,0,1500),bridgeCost:clamp(+p.bridgeCost||5,1,30),passPreference:clamp(Number.isFinite(+p.passPreference)?+p.passPreference:1,0,2)};}
 export function speedLimit(grade,curvature,p){
   const cruise=p.speed/3.6,curve=curvature>1e-10?Math.sqrt(.65/curvature):cruise;
   const slope=cruise/(1+.45*(Math.abs(grade)/.015)**1.5);
@@ -238,10 +238,10 @@ export async function planRoute(start,goal,world,options={},hooks={}){
   const p=parameters(options);
   if(!world(start).land||!world(goal).land)return {error:'Both endpoints must be on land.'};
   if(distance(start,goal)<20)return {error:'Choose points at least 20 m apart.'};
-  const {hierarchicalRoute}=await import('./rail-corridor.js?v=2.1.0');
+  const {hierarchicalRoute,improvePasses}=await import('./rail-corridor.js?v=2.2.0');
   const result=await hierarchicalRoute(start,goal,world,p,hooks);
   if(result)return {...result,parameters:p};
   // A continuous-heading fallback is useful for short, unusually tight corridors.
-  if(distance(start,goal)<20000){const fallback=await hybridRoute(start,goal,world,p,hooks);if(!fallback.error)return fallback;}
+  if(distance(start,goal)<20000){const fallback=await hybridRoute(start,goal,world,p,hooks);if(!fallback.error)return improvePasses(fallback,start,goal,world,p,hooks);}
   return {error:'No route found within these limits. Land may be disconnected, or the grade/cut/bridge limits may need increasing. The bounded search does not prove a route is impossible.'};
 }
