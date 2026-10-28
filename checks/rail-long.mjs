@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {planRoute,DEFAULTS,R,unit,tangent,cross,evaluate,distance} from '../dist/rail.js';
-import {HEIGHT_METERS,DEFAULT_RADIUS} from '../dist/scale.js?v=2.4.0';
+import {HEIGHT_METERS,DEFAULT_RADIUS} from '../dist/scale.js?v=2.5.0';
 import {createNoise,elevationAt} from '../dist/noise.js';
 assert.equal(R,DEFAULT_RADIUS);assert.equal(R,650000);assert.equal(HEIGHT_METERS,65000);
 const model=createNoise('803297',{frequency:1.5,color:.53,layers:10});

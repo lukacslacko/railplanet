@@ -1,6 +1,6 @@
 // Built geometry is immutable. Junctions split graph edges by station, without
 // moving the original track or drawing its reused sections a second time.
-import {R,unit,dot,tangent,distance,clamp,parameters,planRoute,evaluate} from './rail.js?v=2.4.0';
+import {R,unit,dot,tangent,distance,clamp,parameters,planRoute,evaluate} from './rail.js?v=2.5.0';
 const clonePoint=p=>({...p,n:p.n.slice()});
 export function trackStations(points){let s=0;return points.map((p,i)=>{if(i)s+=distance(points[i-1].n,p.n);return s;});}
 export function pointOnTrack(track,station){
@@ -70,15 +70,18 @@ function graphFor(network,start,end,p,corridor=[]){
   for(const a of attachments)if(byTrack.has(a.trackId)&&!q.attachments.some(b=>b.trackId===a.trackId&&Math.abs(b.station-a.station)<.03)){q.attachments.push(a);byTrack.get(a.trackId).push({portal:q,station:a.station});}return q;
  };
  for(const n of network.nodes)add(n,n.attachments,true);
+ // Reserve joining positions across all tracks in rounds. Filling the global
+ // budget from one old line first used to starve later lines in a busy network.
+ const rounds=[[],[],[]];
  for(const t of tracks){
-  for(const e of[start,end]){const q=nearestOnTrack(t,e.n);for(const offset of[0,-1,1]){const station=clamp(q.station+offset*Math.max(p.minRadius*5,q.gap*2),0,t.stations.at(-1));add(pointOnTrack(t,station),[{trackId:t.id,station}]);}}
-  // Find joins along the terrain corridor as well as near its endpoints.
-  // This catches shared passes and central stretches of long, overlapping lines.
+  const endpoints=[],uniform=[],corridorJoins=[],total=t.stations.at(-1);
+  for(const e of[start,end]){const q=nearestOnTrack(t,e.n);for(const offset of[0,-1,1])endpoints.push(clamp(q.station+offset*Math.max(p.minRadius*5,q.gap*2),0,total));}
+  const count=Math.max(1,Math.min(32,Math.ceil(80/tracks.length),Math.ceil(total/10000)));for(let j=0;j<=count;j++)uniform.push(total*j/count);
   const stride=Math.max(1,Math.floor(corridor.length/64)),reach=Math.max(1500,Math.min(18000,distance(start.n,end.n)*.18));
-  for(let i=0;i<corridor.length;i+=stride){const q=nearestOnTrack(t,corridor[i].n);if(q.gap>reach)continue;for(const sign of[0,-1,1]){const station=clamp(q.station+sign*Math.max(p.minRadius*4,q.gap),0,t.stations.at(-1));add(pointOnTrack(t,station),[{trackId:t.id,station}]);}}
-  const total=t.stations.at(-1),count=Math.max(1,Math.min(32,Math.ceil(80/tracks.length),Math.ceil(total/10000)));
-  for(let j=0;j<=count;j++){const station=total*j/count;add(pointOnTrack(t,station),[{trackId:t.id,station}]);}
+  for(let i=0;i<corridor.length;i+=stride){const q=nearestOnTrack(t,corridor[i].n);if(q.gap>reach)continue;for(const sign of[0,-1,1])corridorJoins.push(clamp(q.station+sign*Math.max(p.minRadius*4,q.gap),0,total));}
+  for(const [phase,stations]of[[0,endpoints],[1,uniform],[2,corridorJoins]])rounds[phase].push({track:t,stations});
  }
+ for(const phase of rounds)for(let i=0;phase.some(entry=>i<entry.stations.length);i++)for(const {track,stations}of phase){if(i>=stations.length)continue;const station=stations[i];add(pointOnTrack(track,station),[{trackId:track.id,station}]);}
  const exact=e=>{
   const n=network.nodes.find(n=>n.id===e.nodeId);if(n)return add(n,n.attachments,true);
   const t=tracks.find(t=>t.id===e.trackId);if(t)return add(pointOnTrack(t,e.station),[{trackId:t.id,station:e.station}],true);return null;
@@ -150,6 +153,10 @@ async function searchNetworkRoute(start,end,world,options={},network={tracks:[],
  terrain=await planRoute(start.n,end.n,world,p,baseHooks);
  if(!terrain.error){const r={...terrain,parts:[{points:terrain.points}],networkScore:terrain.score+p.reusePreference*terrain.length};if(!direct||r.networkScore<direct.networkScore)direct=r;}
  if(hooks.cancelled?.())throw Error('cancelled');
+ if(!terrain.error&&p.reusePreference){
+  const {shareCorridors}=await import('./rail-share.js?v=2.5.0'),shared=await shareCorridors(terrain,network,world,p,hooks,{nearestOnTrack,pointOnTrack,assemble});
+  if(shared&&(!direct||shared.networkScore<direct.networkScore))direct=shared;
+ }
  const corridor=terrain.error?[]:terrain.points,graph=corridor.length?graphFor(network,start,end,p,corridor):initial,candidates=networkCandidates(graph,start,end,p),cache=new Map(),failed=[];let trials=0;
  const guideFor=(portal,side)=>{
   if(!corridor.length)return null;let index=0,gap=Infinity;

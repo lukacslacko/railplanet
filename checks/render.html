@@ -1,8 +1,8 @@
 <!doctype html><meta charset="utf-8"><title>GPU shader checks</title><style>body{background:#141b1d;color:#d6e6d5;font:16px/1.6 monospace;padding:32px}canvas{width:320px;height:160px;image-rendering:pixelated}pre{white-space:pre-wrap}</style><h1>GPU shader checks</h1><canvas width="64" height="32"></canvas><pre id="result">Checking actual production shaders…</pre><script type="module">
-import * as S from '../dist/shaders.js?v=2.4.0';
-import {RailwayRenderer} from '../dist/rail-render.js?v=2.4.0';
-import {R,unit} from '../dist/rail.js?v=2.4.0';
-import {createNoise,elevationAt,MAX_LAYERS,WAVES_PER_BAND} from '../dist/noise.js?v=2.4.0';
+import * as S from '../dist/shaders.js?v=2.5.0';
+import {RailwayRenderer} from '../dist/rail-render.js?v=2.5.0';
+import {R,unit} from '../dist/rail.js?v=2.5.0';
+import {createNoise,elevationAt,MAX_LAYERS,WAVES_PER_BAND} from '../dist/noise.js?v=2.5.0';
 const gl=document.querySelector('canvas').getContext('webgl2'),result=document.querySelector('#result'),report=[];
 const assert=(value,message)=>{if(!value)throw Error(message);};
 function program(vs,fs){const p=gl.createProgram();for(const [type,text] of [[gl.VERTEX_SHADER,vs],[gl.FRAGMENT_SHADER,fs]]){const s=gl.createShader(type);gl.shaderSource(s,text);gl.compileShader(s);assert(gl.getShaderParameter(s,gl.COMPILE_STATUS),gl.getShaderInfoLog(s));gl.attachShader(p,s);}gl.linkProgram(p);assert(gl.getProgramParameter(p,gl.LINK_STATUS),gl.getProgramInfoLog(p));return p;}

@@ -1,5 +1,5 @@
-import {HEIGHT_METERS} from './scale.js?v=2.4.0';
-import {R,unit,tangent,cross,distance} from './rail.js?v=2.4.0';
+import {HEIGHT_METERS} from './scale.js?v=2.5.0';
+import {R,unit,tangent,cross,distance} from './rail.js?v=2.5.0';
 const vertex=`#version 300 es
 precision highp float;layout(location=0)in vec3 position;layout(location=1)in vec3 normal;layout(location=2)in vec2 coordinate;uniform mat4 viewProjection;out vec3 n;out vec2 uv;void main(){n=normal;uv=coordinate;gl_Position=viewProjection*vec4(position,1);}`;
 const fragment=`#version 300 es

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {R,unit,distance,planRoute,DEFAULTS} from '../dist/rail.js?v=2.4.0';
+import {R,unit,distance,planRoute,DEFAULTS} from '../dist/rail.js?v=2.5.0';
 import {RailNetwork,planNetworkRoute,nearestOnTrack,pointOnTrack,trackSlice,trackStations} from '../dist/rail-network.js';
 import {snapToNetwork,projectTrackPoint} from '../dist/rail-snap.js';
 import {RailwayRenderer} from '../dist/rail-render.js';
