@@ -1,7 +1,7 @@
 // Terrain corridors first, engineering profile second. A coarse grid does not
 // need to commit to an exact track height or a particular 650 m circular arc.
-import {guidePasses} from './passes.js?v=2.3.0';
-import {R,unit,cross,dot,tangent,distance,angle,clamp,evaluate} from './rail.js?v=2.3.0';
+import {guidePasses} from './passes.js?v=2.3.1';
+import {R,unit,cross,dot,tangent,distance,angle,clamp,evaluate} from './rail.js?v=2.3.1';
 class Heap{
  constructor(){this.a=[];} push(n){let i=this.a.length;this.a.push(n);while(i){const j=(i-1)>>1;if(this.a[j].f<=n.f)break;this.a[i]=this.a[j];i=j;}this.a[i]=n;}
  pop(){const a=this.a,n=a[0],v=a.pop();if(a.length){let i=0;while(2*i+1<a.length){let j=2*i+1;if(j+1<a.length&&a[j+1].f<a[j].f)j++;if(a[j].f>=v.f)break;a[i]=a[j];i=j;}a[i]=v;}return n;} get size(){return this.a.length;}

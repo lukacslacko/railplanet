@@ -1,6 +1,6 @@
 // Screen-pixel tolerances are independent of zoom, DPR and planet radius.
-import {unit,clamp,distance} from './rail.js?v=2.3.0';
-import {HEIGHT_METERS} from './scale.js?v=2.3.0';
+import {unit,clamp,distance} from './rail.js?v=2.3.1';
+import {HEIGHT_METERS} from './scale.js?v=2.3.1';
 export function projectTrackPoint(p,matrix,width,height){
  const r=1+(p.h+.5)/HEIGHT_METERS,v=p.n.map(x=>x*r),clip=[0,0,0,0];
  for(let row=0;row<4;row++)clip[row]=matrix[row]*v[0]+matrix[4+row]*v[1]+matrix[8+row]*v[2]+matrix[12+row];

@@ -1,6 +1,6 @@
 {
   "name": "railplanet",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "type": "module",
   "description": "WebGL procedural planet and passenger railway route planner",
   "scripts": {

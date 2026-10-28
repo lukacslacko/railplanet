@@ -1,7 +1,7 @@
 // Stable terrain features, independent of the selected endpoints. Canonical
 // cube-face samples seed saddle detection. The cached catalogue is built in a
 // deterministic order, so every route uses the same geographic pass anchors.
-import {R,unit,cross,dot,distance,tangent,clamp} from './rail.js?v=2.3.0';
+import {R,unit,cross,dot,distance,tangent,clamp} from './rail.js?v=2.3.1';
 const cache=new WeakMap(),pause=()=>new Promise(r=>setTimeout(r,0));
 const facePoint=(face,u,v)=>unit([[1,v,-u],[-1,v,u],[u,1,-v],[u,-1,v],[u,v,1],[-u,v,-1]][face]);
 const offset=(n,a,x,b,y)=>unit(n.map((v,i)=>v+(a[i]*x+b[i]*y)/R));

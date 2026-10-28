@@ -1,5 +1,5 @@
-import {HEIGHT_METERS} from './scale.js?v=2.3.0';
-import {R,unit,tangent,cross,distance} from './rail.js?v=2.3.0';
+import {HEIGHT_METERS} from './scale.js?v=2.3.1';
+import {R,unit,tangent,cross,distance} from './rail.js?v=2.3.1';
 const vertex=`#version 300 es
 precision highp float;layout(location=0)in vec3 position;layout(location=1)in vec3 normal;layout(location=2)in vec2 coordinate;uniform mat4 viewProjection;out vec3 n;out vec2 uv;void main(){n=normal;uv=coordinate;gl_Position=viewProjection*vec4(position,1);}`;
 const fragment=`#version 300 es
@@ -9,9 +9,9 @@ float aa=max(fwidth(uv.x),.025);float rail=1.0-smoothstep(.065,.065+aa,abs(acros
 float sleeper=(1.0-smoothstep(.13,.13+max(fwidth(uv.y),.02),abs(mod(uv.y+1.1,2.2)-1.1)))*(1.0-smoothstep(1.2,1.3,across));
 base=mix(base,vec3(.16,.105,.065),sleeper);base=mix(base,vec3(.66,.70,.69),rail);float light=.22+1.15*max(dot(normalize(n),sun),0.0);color=vec4(pow(base*light,vec3(.4545)),1);}`;
 const lineVertex=`#version 300 es
-precision highp float;layout(location=0)in vec3 position;layout(location=1)in vec3 along;layout(location=2)in vec2 data;uniform mat4 viewProjection;uniform vec2 viewport;uniform vec3 camera;out float speed;out float fade;out float edge;void main(){vec4 a=viewProjection*vec4(position,1),b=viewProjection*vec4(position+along*.001,1);vec2 d=normalize((b.xy/b.w-a.xy/a.w)*viewport);vec2 side=vec2(-d.y,d.x);a.xy+=side*data.x*6.0/viewport*a.w;a.z-=.000001*a.w;gl_Position=a;speed=data.y;edge=data.x;fade=mix(.38,1.0,smoothstep(.001,.012,distance(position,camera)));}`;
+precision highp float;layout(location=0)in vec3 position;layout(location=1)in vec3 along;layout(location=2)in vec2 data;uniform mat4 viewProjection;uniform vec2 viewport;uniform vec3 camera;out float fade;out float edge;void main(){vec4 a=viewProjection*vec4(position,1),b=viewProjection*vec4(position+along*.001,1);vec2 d=normalize((b.xy/b.w-a.xy/a.w)*viewport);vec2 side=vec2(-d.y,d.x);a.xy+=side*data.x*6.0/viewport*a.w;vec4 surface=viewProjection*vec4(position+normalize(position)*data.y,1);a.z=min(a.z,surface.z/surface.w*a.w)-.000002*a.w;gl_Position=a;edge=data.x;fade=mix(.38,1.0,smoothstep(.001,.012,distance(position,camera)));}`;
 const lineFragment=`#version 300 es
-precision highp float;in float speed;in float fade;in float edge;out vec4 color;void main(){if(fade<.01)discard;vec3 tint=mix(vec3(1.0,.06,.65),vec3(1.0,.92,1.0),smoothstep(.25,.5,abs(edge)));tint=mix(tint,vec3(.075,.015,.075),smoothstep(.65,.95,abs(edge)));color=vec4(tint,fade);}`;
+precision highp float;in float fade;in float edge;out vec4 color;void main(){if(fade<.01)discard;vec3 tint=mix(vec3(1.0,.06,.65),vec3(1.0,.92,1.0),smoothstep(.25,.5,abs(edge)));tint=mix(tint,vec3(.075,.015,.075),smoothstep(.65,.95,abs(edge)));color=vec4(tint,fade);}`;
 const markerVertex=`#version 300 es
 precision highp float;layout(location=0)in vec3 position;layout(location=1)in vec3 shade;uniform mat4 viewProjection;out vec3 tint;void main(){gl_Position=viewProjection*vec4(position,1);gl_Position.z-=.000003*gl_Position.w;gl_PointSize=13.0;tint=shade;}`;
 const markerFragment=`#version 300 es
@@ -50,8 +50,10 @@ export class RailwayRenderer{
         row.push({position:n.map(x=>x*r),n,across,s:station});
       }
       rows.push(row);
-      const position=p.n.map(x=>x*(1+(p.h+.5)/HEIGHT_METERS)),ratio=p.limit/(route.parameters.speed/3.6);
-      for(const sign of[-1,1])stroke.push(...position,...f,sign,ratio);
+      // Cartographic stroke uses the surface depth in cuts, while its screen
+      // position and the physical bed retain the engineered track elevation.
+      const position=p.n.map(x=>x*(1+(p.h+.5)/HEIGHT_METERS)),lift=Math.max(0,surface.rendered(p.n)-(1+(p.h+.5)/HEIGHT_METERS))+1/HEIGHT_METERS;
+      for(const sign of[-1,1])stroke.push(...position,...f,sign,lift);
     }
     const emit=(a,b,c)=>{const raw=cross(b.position.map((x,i)=>x-a.position[i]),c.position.map((x,i)=>x-a.position[i]));if(Math.hypot(...raw)<1e-16)return;let normal=unit(raw);if(normal.reduce((s,v,i)=>s+v*a.n[i],0)<0)normal=normal.map(v=>-v);for(const v of[a,b,c])bed.push(...v.position,...normal,v.across,v.s);};
     // Close the rounded construction footprints at both endpoints.

@@ -1,6 +1,6 @@
 // Built geometry is immutable. Junctions split graph edges by station, without
 // moving the original track or drawing its reused sections a second time.
-import {R,unit,dot,tangent,distance,clamp,parameters,planRoute,evaluate} from './rail.js?v=2.3.0';
+import {R,unit,dot,tangent,distance,clamp,parameters,planRoute,evaluate} from './rail.js?v=2.3.1';
 const clonePoint=p=>({...p,n:p.n.slice()});
 export function trackStations(points){let s=0;return points.map((p,i)=>{if(i)s+=distance(points[i-1].n,p.n);return s;});}
 export function pointOnTrack(track,station){

@@ -1,6 +1,6 @@
-import {createSurfaceSampler} from './surface.js?v=2.3.0';
-import {setPlanetRadius,HEIGHT_METERS} from './scale.js?v=2.3.0';
-import {planNetworkRoute} from './rail-network.js?v=2.3.0';
+import {createSurfaceSampler} from './surface.js?v=2.3.1';
+import {setPlanetRadius,HEIGHT_METERS} from './scale.js?v=2.3.1';
+import {planNetworkRoute} from './rail-network.js?v=2.3.1';
 let version=0,world=null;
 self.onmessage=async({data})=>{
   if(data.type==='init'){

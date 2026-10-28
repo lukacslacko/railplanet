@@ -1,4 +1,4 @@
-import {rotate} from './orbit.js?v=2.3.0';
+import {rotate} from './orbit.js?v=2.3.1';
 
 export const BAND_COUNT = 5;
 export const MAX_LAYERS = 10;
