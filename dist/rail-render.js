@@ -1,5 +1,5 @@
-import {HEIGHT_METERS} from './scale.js?v=2.2.0';
-import {R,unit,tangent,cross,distance} from './rail.js?v=2.2.0';
+import {HEIGHT_METERS} from './scale.js?v=2.3.0';
+import {R,unit,tangent,cross,distance} from './rail.js?v=2.3.0';
 const vertex=`#version 300 es
 precision highp float;layout(location=0)in vec3 position;layout(location=1)in vec3 normal;layout(location=2)in vec2 coordinate;uniform mat4 viewProjection;out vec3 n;out vec2 uv;void main(){n=normal;uv=coordinate;gl_Position=viewProjection*vec4(position,1);}`;
 const fragment=`#version 300 es
@@ -9,9 +9,9 @@ float aa=max(fwidth(uv.x),.025);float rail=1.0-smoothstep(.065,.065+aa,abs(acros
 float sleeper=(1.0-smoothstep(.13,.13+max(fwidth(uv.y),.02),abs(mod(uv.y+1.1,2.2)-1.1)))*(1.0-smoothstep(1.2,1.3,across));
 base=mix(base,vec3(.16,.105,.065),sleeper);base=mix(base,vec3(.66,.70,.69),rail);float light=.22+1.15*max(dot(normalize(n),sun),0.0);color=vec4(pow(base*light,vec3(.4545)),1);}`;
 const lineVertex=`#version 300 es
-precision highp float;layout(location=0)in vec3 position;layout(location=1)in vec3 along;layout(location=2)in vec2 data;uniform mat4 viewProjection;uniform vec2 viewport;uniform vec3 camera;out float speed;out float fade;out float edge;void main(){vec4 a=viewProjection*vec4(position,1),b=viewProjection*vec4(position+along*.001,1);vec2 d=normalize((b.xy/b.w-a.xy/a.w)*viewport);vec2 side=vec2(-d.y,d.x);a.xy+=side*data.x*4.0/viewport*a.w;a.z-=.000001*a.w;gl_Position=a;speed=data.y;edge=data.x;fade=smoothstep(.001,.012,distance(position,camera));}`;
+precision highp float;layout(location=0)in vec3 position;layout(location=1)in vec3 along;layout(location=2)in vec2 data;uniform mat4 viewProjection;uniform vec2 viewport;uniform vec3 camera;out float speed;out float fade;out float edge;void main(){vec4 a=viewProjection*vec4(position,1),b=viewProjection*vec4(position+along*.001,1);vec2 d=normalize((b.xy/b.w-a.xy/a.w)*viewport);vec2 side=vec2(-d.y,d.x);a.xy+=side*data.x*6.0/viewport*a.w;a.z-=.000001*a.w;gl_Position=a;speed=data.y;edge=data.x;fade=mix(.38,1.0,smoothstep(.001,.012,distance(position,camera)));}`;
 const lineFragment=`#version 300 es
-precision highp float;in float speed;in float fade;in float edge;out vec4 color;void main(){if(fade<.01)discard;vec3 tint=mix(vec3(1,.57,.14),vec3(.15,.94,.64),clamp(speed,0.,1.));tint=mix(tint,vec3(.035,.06,.05),smoothstep(.55,.95,abs(edge)));color=vec4(tint,fade);}`;
+precision highp float;in float speed;in float fade;in float edge;out vec4 color;void main(){if(fade<.01)discard;vec3 tint=mix(vec3(1.0,.06,.65),vec3(1.0,.92,1.0),smoothstep(.25,.5,abs(edge)));tint=mix(tint,vec3(.075,.015,.075),smoothstep(.65,.95,abs(edge)));color=vec4(tint,fade);}`;
 const markerVertex=`#version 300 es
 precision highp float;layout(location=0)in vec3 position;layout(location=1)in vec3 shade;uniform mat4 viewProjection;out vec3 tint;void main(){gl_Position=viewProjection*vec4(position,1);gl_Position.z-=.000003*gl_Position.w;gl_PointSize=13.0;tint=shade;}`;
 const markerFragment=`#version 300 es
@@ -24,9 +24,22 @@ export class RailwayRenderer{
   mesh(vertices,stride,attributes){const g=this.gl,vao=g.createVertexArray(),buffer=g.createBuffer();g.bindVertexArray(vao);g.bindBuffer(g.ARRAY_BUFFER,buffer);g.bufferData(g.ARRAY_BUFFER,new Float32Array(vertices),g.STATIC_DRAW);let offset=0;attributes.forEach((size,i)=>{g.enableVertexAttribArray(i);g.vertexAttribPointer(i,size,g.FLOAT,false,stride*4,offset*4);offset+=size;});g.bindVertexArray(null);return{vao,buffer,count:vertices.length/stride};}
   destroy(mesh){if(mesh){this.gl.deleteVertexArray(mesh.vao);this.gl.deleteBuffer(mesh.buffer);}}
   clear(){this.meshes.forEach(m=>this.destroy(m));this.meshes=[];this.hasRoute=false;}
-  setMarkers(points,surface){this.destroy(this.markers);const values=[];for(let i=0;i<points.length;i++){const n=points[i],radius=surface.rendered(n)+5/HEIGHT_METERS;values.push(...n.map(x=>x*radius),...(i===0?[.1,.9,.6]:[1,.6,.1]));}this.markers=values.length?this.mesh(values,6,[3,3]):null;}
-  setRoute(route,surface){
-    this.clear();const g=this.gl,points=route.points,bed=[],stroke=[],widths=[],rows=[],stations=[];let station=0;
+  setMarkers(points,surface){this.destroy(this.markers);const values=[];for(let i=0;i<points.length;i++){const p=points[i],n=p.n||p,radius=Number.isFinite(p.h)?1+(p.h+5)/HEIGHT_METERS:surface.rendered(n)+5/HEIGHT_METERS;values.push(...n.map(x=>x*radius),...(p.tint||(i===0?[.1,.9,.6]:[1,.6,.1])));}this.markers=values.length?this.mesh(values,6,[3,3]):null;}
+  setRoute(route,surface){return RailwayRenderer.prototype.setRoutes.call(this,[route],surface);}
+  setRoutes(routes,surface){
+    this.clear();if(!routes.length)return;const g=this.gl,bed=[],line=[],points=[],widths=[];
+    for(const route of routes){
+      const part=RailwayRenderer.prototype.geometry.call(this,route,surface);
+      for(const v of part.bed)bed.push(v);for(const v of part.line)line.push(v);
+      part.points.forEach((p,i)=>{points.push({...p,breakBefore:i===0});widths.push(part.widths[i]);});
+    }
+    const bins=this.buildBins(points,widths,2048);g.deleteTexture(this.bins);g.deleteTexture(this.data);g.deleteTexture(this.ranges);this.bins=this.integerTexture(bins.width,bins.height,bins.pixels);this.ranges=this.integerTexture(bins.rangeWidth,bins.rangeHeight,bins.ranges);
+    const width=2048,height=Math.max(1,Math.ceil(points.length/width)),data=new Float32Array(width*height*4);
+    points.forEach((p,i)=>data.set([...p.n,widths[i]/R],i*4));this.data=this.floatTexture(width,height,data);
+    this.meshes=[this.mesh(bed,8,[3,3,2]),this.mesh(line,8,[3,3,2])];this.hasRoute=true;
+  }
+  geometry(route,surface){
+    const points=route.points,bed=[],stroke=[],widths=[],rows=[],stations=[];let station=0;
     for(let i=0;i<points.length;i++){
       const p=points[i];if(i)station+=distance(points[i-1].n,p.n);stations.push(station);
       const next=i+1<points.length?tangent(p.n,points[i+1].n):null,previous=i?tangent(p.n,points[i-1].n).map(x=>-x):null,f=next&&previous?unit(next.map((v,k)=>v+previous[k])):(next||previous),side=unit(cross(p.n,f));
@@ -74,15 +87,12 @@ export class RailwayRenderer{
       }
       for(let j=0;j<4;j++){const k=(j+1)%4;emit(top[j],bottom[j],top[k]);emit(top[k],bottom[j],bottom[k]);}
     }
-    const bins=this.buildBins(points,widths,2048);g.deleteTexture(this.bins);g.deleteTexture(this.data);g.deleteTexture(this.ranges);this.bins=this.integerTexture(bins.width,bins.height,bins.pixels);this.ranges=this.integerTexture(bins.rangeWidth,bins.rangeHeight,bins.ranges);
-    const width=2048,height=Math.max(1,Math.ceil(points.length/width)),data=new Float32Array(width*height*4);
-    points.forEach((p,i)=>data.set([...p.n,widths[i]/R],i*4));this.data=this.floatTexture(width,height,data);
-    this.meshes=[this.mesh(bed,8,[3,3,2]),this.mesh(line,8,[3,3,2])];this.hasRoute=true;
+    return {points,widths,bed,line};
   }
   buildBins(points,widths,width){
     const height=width/2,lists=new Map();
     for(let i=0;i<points.length-1;i++){
-      if(!widths[i]&&!widths[i+1])continue;const a=points[i].n,b=points[i+1].n,latA=Math.asin(a[1]),latB=Math.asin(b[1]),v0=latA/Math.PI+.5,v1=latB/Math.PI+.5;
+      if(points[i+1].breakBefore||!widths[i]&&!widths[i+1])continue;const a=points[i].n,b=points[i+1].n,latA=Math.asin(a[1]),latB=Math.asin(b[1]),v0=latA/Math.PI+.5,v1=latB/Math.PI+.5;
       let u0=(Math.atan2(a[2],a[0])/(2*Math.PI)+1)%1,u1=(Math.atan2(b[2],b[0])/(2*Math.PI)+1)%1;if(u1-u0>.5)u1--;if(u0-u1>.5)u1++;
       const margin=Math.max(widths[i],widths[i+1])/R,du=margin/(2*Math.PI*Math.max(.005,Math.cos(Math.max(Math.abs(latA),Math.abs(latB))))),dv=margin/Math.PI;
       const minX=Math.floor((Math.min(u0,u1)-du)*width)-1,maxX=Math.ceil((Math.max(u0,u1)+du)*width)+1,minY=Math.max(0,Math.floor((Math.min(v0,v1)-dv)*height)-1),maxY=Math.min(height-1,Math.ceil((Math.max(v0,v1)+dv)*height)+1);

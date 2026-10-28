@@ -1,6 +1,6 @@
-import {createSurfaceSampler} from './surface.js?v=2.2.0';
-import {setPlanetRadius,HEIGHT_METERS} from './scale.js?v=2.2.0';
-import {planRoute,R} from './rail.js?v=2.2.0';
+import {createSurfaceSampler} from './surface.js?v=2.3.0';
+import {setPlanetRadius,HEIGHT_METERS} from './scale.js?v=2.3.0';
+import {planNetworkRoute} from './rail-network.js?v=2.3.0';
 let version=0,world=null;
 self.onmessage=async({data})=>{
   if(data.type==='init'){
@@ -11,7 +11,7 @@ self.onmessage=async({data})=>{
   if(data.type!=='plan'||!world)return;
   const own=++version,sample=world,started=performance.now();
   try{
-    const result=await planRoute(data.start,data.end,sample,data.parameters,{cancelled:()=>version!==own,progress:(stage,expanded,budget)=>{if(version===own)postMessage({type:'progress',id:data.id,stage,expanded,budget});}});
+    const result=await planNetworkRoute(data.start,data.end,sample,data.parameters,data.network,{cancelled:()=>version!==own,progress:(stage,expanded,budget)=>{if(version===own)postMessage({type:'progress',id:data.id,stage,expanded,budget});}});
     if(version===own)postMessage({type:'result',id:data.id,result:{...result,milliseconds:performance.now()-started}});
   }catch(error){if(version===own)postMessage({type:'result',id:data.id,result:{error:error.message==='cancelled'?'Search cancelled.':'Routing failed: '+error.message}});}
 };

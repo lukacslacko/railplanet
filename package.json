@@ -1,11 +1,11 @@
 {
   "name": "railplanet",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "type": "module",
   "description": "WebGL procedural planet and passenger railway route planner",
   "scripts": {
     "start": "python3 -m http.server 4173 --directory dist",
-    "check": "node --check dist/app.js && node --check dist/shaders.js && node --check dist/hydrology.js && node --check dist/orbit.js && node --check dist/noise.js && node --check dist/mesh.js && node --check dist/flight.js && node --check dist/surface.js && node --check dist/scale.js && node --check dist/passes.js && node --check dist/rail-corridor.js && node --check dist/rail.js && node --check dist/rail-worker.js && node --check dist/rail-render.js && node checks/mesh.mjs && node checks/hydrology.mjs && node checks/orbit.mjs && node checks/noise.mjs && node checks/flight.mjs && node checks/rail.mjs && node checks/passes.mjs && node checks/rail-long.mjs"
+    "check": "node --check dist/app.js && node --check dist/shaders.js && node --check dist/hydrology.js && node --check dist/orbit.js && node --check dist/noise.js && node --check dist/mesh.js && node --check dist/flight.js && node --check dist/surface.js && node --check dist/scale.js && node --check dist/passes.js && node --check dist/rail-corridor.js && node --check dist/rail.js && node --check dist/rail-network.js && node --check dist/rail-snap.js && node --check dist/rail-worker.js && node --check dist/rail-render.js && node checks/mesh.mjs && node checks/hydrology.mjs && node checks/orbit.mjs && node checks/noise.mjs && node checks/flight.mjs && node checks/rail.mjs && node checks/passes.mjs && node checks/rail-long.mjs && node checks/network.mjs"
   },
   "license": "MIT",
   "homepage": "https://lukacslacko.github.io/railplanet/",

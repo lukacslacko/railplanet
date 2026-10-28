@@ -1,7 +1,7 @@
 // Terrain corridors first, engineering profile second. A coarse grid does not
 // need to commit to an exact track height or a particular 650 m circular arc.
-import {guidePasses} from './passes.js?v=2.2.0';
-import {R,unit,cross,dot,tangent,distance,angle,clamp,evaluate} from './rail.js?v=2.2.0';
+import {guidePasses} from './passes.js?v=2.3.0';
+import {R,unit,cross,dot,tangent,distance,angle,clamp,evaluate} from './rail.js?v=2.3.0';
 class Heap{
  constructor(){this.a=[];} push(n){let i=this.a.length;this.a.push(n);while(i){const j=(i-1)>>1;if(this.a[j].f<=n.f)break;this.a[i]=this.a[j];i=j;}this.a[i]=n;}
  pop(){const a=this.a,n=a[0],v=a.pop();if(a.length){let i=0;while(2*i+1<a.length){let j=2*i+1;if(j+1<a.length&&a[j+1].f<a[j].f)j++;if(a[j].f>=v.f)break;a[i]=a[j];i=j;}a[i]=v;}return n;} get size(){return this.a.length;}
@@ -17,10 +17,15 @@ function simplify(path,tolerance){
  for(let i=1;i<path.length-1;i++){const p=path[i],t=clamp(((p[0]-a[0])*dx+(p[1]-a[1])*dy)/Math.max(1,l),0,1),d=Math.hypot(p[0]-a[0]-t*dx,p[1]-a[1]-t*dy);if(d>max){max=d;index=i;}}
  return max>tolerance?[...simplify(path.slice(0,index+1),tolerance).slice(0,-1),...simplify(path.slice(index),tolerance)]:[a,b];
 }
-function spline(path,map,spacing=35){
+function spline(path,map,spacing=35,directions=[]){
  const points=[];
  for(let i=0;i<path.length-1;i++){
-  const a=path[Math.max(0,i-1)],b=path[i],c=path[i+1],d=path[Math.min(path.length-1,i+2)],count=Math.max(2,Math.ceil(Math.hypot(c[0]-b[0],c[1]-b[1])/spacing));
+  let a=path[Math.max(0,i-1)],b=path[i],c=path[i+1],d=path[Math.min(path.length-1,i+2)];
+  const span=Math.hypot(c[0]-b[0],c[1]-b[1]);
+  // Phantom controls impose the existing track's tangent at a connection.
+  if(i===0&&directions[0]){const q=map.xy(unit(map.n(...b).map((v,k)=>v+directions[0][k]*100/R))),u=q.map((v,k)=>v-b[k]),l=Math.hypot(...u);a=c.map((v,k)=>v-2*u[k]/l*span);}
+  if(i===path.length-2&&directions[1]){const q=map.xy(unit(map.n(...c).map((v,k)=>v+directions[1][k]*100/R))),u=q.map((v,k)=>v-c[k]),l=Math.hypot(...u);d=b.map((v,k)=>v+2*u[k]/l*span);}
+  const count=Math.max(2,Math.ceil(span/spacing));
   for(let j=0;j<count;j++){const t=j/count,t2=t*t,t3=t2*t,xy=b.map((v,k)=>.5*(2*v+(-a[k]+c[k])*t+(2*a[k]-5*v+4*c[k]-d[k])*t2+(-a[k]+3*v-3*c[k]+d[k])*t3));points.push({n:map.n(...xy),xy});}
  }
  points.push({n:map.n(...path.at(-1)),xy:path.at(-1).slice()});return points;
@@ -28,20 +33,20 @@ function spline(path,map,spacing=35){
 function roundControls(path,amount){return path.map((p,i)=>i===0||i===path.length-1?p.slice():p.map((v,k)=>v*(1-amount)+(path[i-1][k]+path[i+1][k])*amount/2));}
 // Propagate the complete reachable height interval, then backtrack. Unlike a
 // local height beam this cannot lose a feasible profile by quantizing its height.
-export function fitProfile(points,world,p){
+export function fitProfile(points,world,p,endpointHeights=[]){
  const count=points.length,lo=new Float64Array(count),hi=new Float64Array(count),ground=new Float64Array(count),station=new Float64Array(count),target=new Float64Array(count);
  for(let i=0;i<count;i++){
   const n=points[i].n,s=world(n);if(!s.land)return null;ground[i]=s.height;station[i]=i?station[i-1]+distance(points[i-1].n,n):0;
   const f=tangent(n,points[i+1<count?i+1:i-1].n),side=cross(n,f),plus=world(unit(n.map((v,k)=>v+side[k]*4/R))),minus=world(unit(n.map((v,k)=>v-side[k]*4/R))),edge=Math.abs(plus.height-minus.height)/2;
   lo[i]=s.height-Math.max(0,p.maxEarthwork-edge-.2);hi[i]=s.height+Math.max(p.maxBridge?Math.max(0,p.maxBridge-edge-.2):0,Math.max(0,p.maxEarthwork-edge-.2));
  }
- lo[0]=hi[0]=ground[0];lo[count-1]=hi[count-1]=ground[count-1];
+ for(const[i,h]of[[0,endpointHeights[0]??ground[0]],[count-1,endpointHeights[1]??ground[count-1]]]){if(h<lo[i]-1e-6||h>hi[i]+1e-6)return null;lo[i]=hi[i]=h;}
  for(let i=1;i<count;i++){const dh=(station[i]-station[i-1])*p.maxGrade*.999;lo[i]=Math.max(lo[i],lo[i-1]-dh);hi[i]=Math.min(hi[i],hi[i-1]+dh);if(lo[i]>hi[i]+1e-7)return null;}
  for(let i=count-2;i>=0;i--){const dh=(station[i+1]-station[i])*p.maxGrade*.999;lo[i]=Math.max(lo[i],lo[i+1]-dh);hi[i]=Math.min(hi[i],hi[i+1]+dh);if(lo[i]>hi[i]+1e-7)return null;}
  // A 600 m window removes high-frequency vertical jolts before bounded fitting.
  let left=0,right=0,sum=0;
  for(let i=0;i<count;i++){while(right<count&&station[right]<station[i]+300){sum+=ground[right++];}while(station[left]<station[i]-300){sum-=ground[left++];}target[i]=.35*ground[i]+.65*sum/Math.max(1,right-left);}
- const heights=new Float64Array(count);heights[count-1]=ground[count-1];
+ const heights=new Float64Array(count);heights[count-1]=lo[count-1];
  for(let i=count-2;i>=0;i--){const dh=(station[i+1]-station[i])*p.maxGrade*.999;heights[i]=clamp(target[i],Math.max(lo[i],heights[i+1]-dh),Math.min(hi[i],heights[i+1]+dh));}
  for(let pass=0;pass<30;pass++)for(let j=1;j<count-1;j++){
   const i=pass%2?count-1-j:j,dl=station[i]-station[i-1],dr=station[i+1]-station[i],slope=(heights[i-1]*dr+heights[i+1]*dl)/(dl+dr);
@@ -78,11 +83,16 @@ async function gridRoute(start,end,map,world,p,{spacing,margin,gradeWeight,penal
  return null;
 }
 async function fitPath(path,start,end,map,world,p,hooks,maxSmooth=7){
- if(path.geometry){const profile=fitProfile(path.geometry,world,p);return profile?evaluate(profile,world,p):null;}
+ const validate=profile=>{
+  if(!profile)return null;
+  for(const side of[0,1]){const direction=hooks.endpointDirections?.[side];if(!direction)continue;const i=side?profile.length-1:0,j=side?i-1:1,heading=tangent(profile[i].n,profile[j].n).map(v=>side?-v:v),ds=distance(profile[i].n,profile[j].n);if(angle(direction,heading)>ds/(2*p.minRadius)*1.0001+1e-5)return null;}
+  return evaluate(profile,world,p);
+ };
+ if(path.geometry)return validate(fitProfile(path.geometry,world,p,hooks.endpointHeights));
  let controls=simplify(path,Math.max(2,Math.min(180,p.minRadius*.3)));
  for(let smooth=0;smooth<maxSmooth;smooth++){
-  const geometry=spline(controls,map,clamp(distance(start,end)/5000,20,50));geometry[0].n=start.slice();geometry.at(-1).n=end.slice();
-  const profile=fitProfile(geometry,world,p);if(profile){const result=evaluate(profile,world,p);if(result)return result;}
+  const geometry=spline(controls,map,clamp(distance(start,end)/5000,20,50),hooks.endpointDirections);geometry[0].n=start.slice();geometry.at(-1).n=end.slice();
+  const result=validate(fitProfile(geometry,world,p,hooks.endpointHeights));if(result)return result;
   if(controls.length===2)break;controls=roundControls(controls,.22);await pause();if(hooks.cancelled?.())throw Error('cancelled');
  }
  return null;

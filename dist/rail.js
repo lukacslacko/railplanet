@@ -1,7 +1,7 @@
 // Railway metrics, engineering validation, and a continuous-heading fallback.
-import {R} from './scale.js?v=2.2.0';
-export {R} from './scale.js?v=2.2.0';
-export const DEFAULTS=Object.freeze({speed:120,maxGrade:.03,minRadius:300,maxEarthwork:60,earthworkCost:.025,timeWeight:.6,maxBridge:300,bridgeCost:5,passPreference:1});
+import {R} from './scale.js?v=2.3.0';
+export {R} from './scale.js?v=2.3.0';
+export const DEFAULTS=Object.freeze({speed:120,maxGrade:.03,minRadius:300,maxEarthwork:60,earthworkCost:.025,timeWeight:.6,maxBridge:300,bridgeCost:5,passPreference:1,reusePreference:1});
 export const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
 export const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
 export const unit=v=>{const r=Math.hypot(...v);return v.map(x=>x/r);};
@@ -10,7 +10,7 @@ export const angle=(a,b)=>Math.atan2(Math.hypot(...cross(a,b)),clamp(dot(a,b),-1
 export const distance=(a,b)=>angle(a,b)*R;
 export function rotate(v,axis,a){const c=Math.cos(a),s=Math.sin(a),k=dot(axis,v),t=cross(axis,v);return v.map((x,i)=>x*c+t[i]*s+axis[i]*k*(1-c));}
 export function tangent(a,b){const k=dot(a,b),v=b.map((x,i)=>x-a[i]*k);return Math.hypot(...v)>1e-9?unit(v):unit(cross(a,Math.abs(a[1])<.9?[0,1,0]:[1,0,0]));}
-export function parameters(p={}){return {speed:clamp(+p.speed||120,40,200),maxGrade:clamp(+p.maxGrade||.03,.005,.1),minRadius:clamp(+p.minRadius||300,80,2000),maxEarthwork:clamp(Number.isFinite(+p.maxEarthwork)?+p.maxEarthwork:60,0,150),earthworkCost:clamp(Number.isFinite(+p.earthworkCost)?+p.earthworkCost:.025,.001,.15),timeWeight:clamp(Number.isFinite(+p.timeWeight)?+p.timeWeight:.6,0,2),maxBridge:clamp(Number.isFinite(+p.maxBridge)?+p.maxBridge:300,0,1500),bridgeCost:clamp(+p.bridgeCost||5,1,30),passPreference:clamp(Number.isFinite(+p.passPreference)?+p.passPreference:1,0,2)};}
+export function parameters(p={}){return {speed:clamp(+p.speed||120,40,200),maxGrade:clamp(+p.maxGrade||.03,.005,.1),minRadius:clamp(+p.minRadius||300,80,2000),maxEarthwork:clamp(Number.isFinite(+p.maxEarthwork)?+p.maxEarthwork:60,0,150),earthworkCost:clamp(Number.isFinite(+p.earthworkCost)?+p.earthworkCost:.025,.001,.15),timeWeight:clamp(Number.isFinite(+p.timeWeight)?+p.timeWeight:.6,0,2),maxBridge:clamp(Number.isFinite(+p.maxBridge)?+p.maxBridge:300,0,1500),bridgeCost:clamp(+p.bridgeCost||5,1,30),passPreference:clamp(Number.isFinite(+p.passPreference)?+p.passPreference:1,0,2),reusePreference:clamp(Number.isFinite(+p.reusePreference)?+p.reusePreference:1,0,2)};}
 export function speedLimit(grade,curvature,p){
   const cruise=p.speed/3.6,curve=curvature>1e-10?Math.sqrt(.65/curvature):cruise;
   const slope=cruise/(1+.45*(Math.abs(grade)/.015)**1.5);
@@ -107,13 +107,14 @@ function reconstruct(node,world){
 export function evaluate(points,world,p,{footprint=true}={}){
   if(points.length<2)return null;
   const limits=new Float64Array(points.length).fill(p.speed/3.6),lengths=new Float64Array(points.length),grades=new Float64Array(points.length);
-  let length=0,volume=0,cut=0,fill=0,maxGrade=0,maxWork=0,minRadius=Infinity,bridgeLength=0,maxBridgeHeight=0,bridgeCost=0;
+  let length=0,volume=0,cut=0,fill=0,maxGrade=0,maxWork=0,minRadius=Infinity,bridgeLength=0,maxBridgeHeight=0,bridgeCost=0,reusedLength=0;
   for(let i=1;i<points.length;i++){
     const a=points[i-1],b=points[i],ds=Number.isFinite(b.station)&&Number.isFinite(a.station)?b.station-a.station:distance(a.n,b.n);if(ds<.001)continue;
-    const grade=(b.h-a.h)/ds;if(Math.abs(grade)>p.maxGrade+1e-6)return null;
+    const reused=!!b.reused,grade=(b.h-a.h)/ds;if(!reused&&Math.abs(grade)>p.maxGrade+1e-6)return null;
+    if(reused)reusedLength+=ds;
     lengths[i]=ds;grades[i]=grade;length+=ds;maxGrade=Math.max(maxGrade,Math.abs(grade));
     let k=0;if(i<points.length-1){const incoming=tangent(b.n,a.n).map(v=>-v),outgoing=tangent(b.n,points[i+1].n);k=angle(incoming,outgoing)/Math.max(1,(ds+distance(b.n,points[i+1].n))/2);}
-    if(k>1/p.minRadius*1.0001)return null;
+    if(k>1/p.minRadius*1.0001&&!(reused&&points[i+1]?.reused&&b.sourceTrackId===points[i+1].sourceTrackId))return null;
     if(k>1e-7)minRadius=Math.min(minRadius,1/k);
     const limit=speedLimit(grade,k,p);limits[i]=Math.min(limits[i],limit);limits[i-1]=Math.min(limits[i-1],limit);
     const samples=Math.max(1,Math.ceil(ds/10)),f=tangent(a.n,b.n),side=unit(cross(a.n,f));
@@ -121,18 +122,18 @@ export function evaluate(points,world,p,{footprint=true}={}){
       const t=j/samples,n=unit(a.n.map((x,k)=>x*(1-t)+b.n[k]*t)),h=a.h+(b.h-a.h)*t,s=world(n),depth=h-s.height;
       if(!s.land)return null;
       const plus=world(unit(n.map((x,k)=>x+side[k]*4/R))).height,minus=world(unit(n.map((x,k)=>x-side[k]*4/R))).height,crossSlope=(plus-minus)/8;
-      const build=construction(depth,crossSlope,p);if(!build)return null;
+      const build=reused?{width:Math.max(a.width??6,b.width??6),bridge:!!(a.bridge||b.bridge),cost:0,area:0,work:0}:construction(depth,crossSlope,p);if(!build)return null;
       const width=build.width;
       if(build.bridge){bridgeLength+=ds/samples;maxBridgeHeight=Math.max(maxBridgeHeight,depth);bridgeCost+=build.cost*ds/samples;}
       if(footprint)for(const sign of [-1,-.5,.5,1])if(!world(unit(n.map((x,k)=>x+side[k]*width/R*sign))).land)return null;
-      const v=build.area*ds/samples;volume+=v;const net=(width+4)*depth*ds/samples;if(!build.bridge){cut+=Math.max(0,(v-net)/2);fill+=Math.max(0,(v+net)/2);}maxWork=Math.max(maxWork,build.work);
+      const v=build.area*ds/samples;volume+=v;const net=(width+4)*depth*ds/samples;if(!build.bridge&&!reused){cut+=Math.max(0,(v-net)/2);fill+=Math.max(0,(v+net)/2);}maxWork=Math.max(maxWork,build.work);
     }
   }
-  // Junctions and grade-separated self-crossings are not modeled yet.
-  // A spatial hash rejects overlapping formations, including viaducts.
+  // Reject a route looping back over its own formation, including viaducts.
+  // Shared junctions between separate built tracks are handled by the network.
   const occupied=new Map();let station=0;
   for(let i=0;i<points.length;i++){
-    const point=points[i];if(i)station+=lengths[i];const heading=tangent(point.n,points[i+1<points.length?i+1:i-1].n),side=unit(cross(point.n,heading)),plus=world(unit(point.n.map((x,k)=>x+side[k]*4/R))).height,minus=world(unit(point.n.map((x,k)=>x-side[k]*4/R))).height,build=construction(point.h-world(point.n).height,(plus-minus)/8,p);if(!build)return null;const width=build.width;point.width=width;point.bridge=build.bridge;
+    const point=points[i];if(i)station+=lengths[i];const heading=tangent(point.n,points[i+1<points.length?i+1:i-1].n),side=unit(cross(point.n,heading)),plus=world(unit(point.n.map((x,k)=>x+side[k]*4/R))).height,minus=world(unit(point.n.map((x,k)=>x-side[k]*4/R))).height,build=point.fixed?{width:point.width??6,bridge:!!point.bridge}:construction(point.h-world(point.n).height,(plus-minus)/8,p);if(!build)return null;const width=build.width;point.width=width;point.bridge=build.bridge;
     if(footprint&&(i===0||i===points.length-1))for(let j=0;j<12;j++){const a=j*Math.PI/6,n=unit(point.n.map((v,k)=>v+(heading[k]*Math.cos(a)+side[k]*Math.sin(a))*width/R));if(!world(n).land)return null;}
     const cell=point.n.map(v=>Math.floor(v*R/512));
     for(let x=-1;x<=1;x++)for(let y=-1;y<=1;y++)for(let z=-1;z<=1;z++)for(const other of occupied.get([cell[0]+x,cell[1]+y,cell[2]+z].join(','))||[]){
@@ -153,7 +154,7 @@ export function evaluate(points,world,p,{footprint=true}={}){
   for(let i=1;i<speeds.length;i++){seconds+=2*lengths[i]/Math.max(.05,speeds[i]+speeds[i-1]);changes+=Math.abs(limits[i]-limits[i-1]);}
   const score=length+p.timeWeight*(seconds*p.speed/3.6-length)+p.earthworkCost*volume+bridgeCost+changes*8;
   for(let i=0;i<points.length;i++){points[i].limit=limits[i];points[i].speed=speeds[i];}
-  return {points,length,seconds,volume,cut,fill,maxGrade,maxWork,minRadius,bridgeLength,maxBridgeHeight,bridgeCost,score};
+  return {points,length,seconds,volume,cut,fill,maxGrade,maxWork,minRadius,bridgeLength,maxBridgeHeight,bridgeCost,score,reusedLength,newLength:length-reusedLength};
 }
 async function search(start,goal,world,p,{spacing,budget,corridor=null,corridorWidth=2500,progress=()=>{},cancelled=()=>false,alternatives=1}){
   const startHeight=world(start).height,goalHeight=world(goal).height,inside=corridorTest(corridor,corridorWidth);
@@ -238,10 +239,10 @@ export async function planRoute(start,goal,world,options={},hooks={}){
   const p=parameters(options);
   if(!world(start).land||!world(goal).land)return {error:'Both endpoints must be on land.'};
   if(distance(start,goal)<20)return {error:'Choose points at least 20 m apart.'};
-  const {hierarchicalRoute,improvePasses}=await import('./rail-corridor.js?v=2.2.0');
+  const {hierarchicalRoute,improvePasses}=await import('./rail-corridor.js?v=2.3.0');
   const result=await hierarchicalRoute(start,goal,world,p,hooks);
   if(result)return {...result,parameters:p};
   // A continuous-heading fallback is useful for short, unusually tight corridors.
-  if(distance(start,goal)<20000){const fallback=await hybridRoute(start,goal,world,p,hooks);if(!fallback.error)return improvePasses(fallback,start,goal,world,p,hooks);}
+  if(distance(start,goal)<20000&&!hooks.endpointDirections?.some(Boolean)&&!hooks.endpointHeights?.some((h,i)=>Number.isFinite(h)&&Math.abs(h-world(i?goal:start).height)>.01)){const fallback=await hybridRoute(start,goal,world,p,hooks);if(!fallback.error)return improvePasses(fallback,start,goal,world,p,hooks);}
   return {error:'No route found within these limits. Land may be disconnected, or the grade/cut/bridge limits may need increasing. The bounded search does not prove a route is impossible.'};
 }
