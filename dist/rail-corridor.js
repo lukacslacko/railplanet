@@ -1,7 +1,7 @@
 // Terrain corridors first, engineering profile second. A coarse grid does not
 // need to commit to an exact track height or a particular 650 m circular arc.
-import {guidePasses} from './passes.js?v=2.3.1';
-import {R,unit,cross,dot,tangent,distance,angle,clamp,evaluate} from './rail.js?v=2.3.1';
+import {guidePasses} from './passes.js?v=2.4.0';
+import {R,unit,cross,dot,tangent,distance,angle,clamp,evaluate} from './rail.js?v=2.4.0';
 class Heap{
  constructor(){this.a=[];} push(n){let i=this.a.length;this.a.push(n);while(i){const j=(i-1)>>1;if(this.a[j].f<=n.f)break;this.a[i]=this.a[j];i=j;}this.a[i]=n;}
  pop(){const a=this.a,n=a[0],v=a.pop();if(a.length){let i=0;while(2*i+1<a.length){let j=2*i+1;if(j+1<a.length&&a[j+1].f<a[j].f)j++;if(a[j].f>=v.f)break;a[i]=a[j];i=j;}a[i]=v;}return n;} get size(){return this.a.length;}
@@ -108,6 +108,10 @@ export async function hierarchicalRoute(start,end,world,p,hooks={}){
  const attempt=async(path,maxSmooth=7)=>{const result=await fitPath(path,start,end,map,world,p,hooks,maxSmooth);if(result)candidates.push(result);return result;};
  const finish=async()=>{await guidePasses(candidates,map,world,p,hooks,attempt);candidates.sort((a,b)=>a.score-b.score);return {...candidates[0],alternatives:candidates.length,expanded};};
  hooks.progress?.('Fitting direct profile',0,1);await attempt([map.xy(start),map.xy(end)]);
+ if(hooks.guide?.length>2&&(!candidates.length||candidates[0].score>direct*1.3))await attempt(hooks.guide.map(n=>map.xy(n)),4);
+ // Cheap network connection trials precede the expensive corridor searches.
+ // The guide follows the independently found land route towards a join.
+ if(hooks.quickOnly){candidates.sort((a,b)=>a.score-b.score);return candidates[0]||null;}
  if(candidates.length&&candidates[0].score<direct*1.08)return finish();
  const spacing=Math.max(direct/150,clamp(direct/85,Math.max(150,p.minRadius*1.8),3200));
  for(let pass=0;pass<4;pass++){

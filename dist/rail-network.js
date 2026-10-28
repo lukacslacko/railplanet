@@ -1,6 +1,6 @@
 // Built geometry is immutable. Junctions split graph edges by station, without
 // moving the original track or drawing its reused sections a second time.
-import {R,unit,dot,tangent,distance,clamp,parameters,planRoute,evaluate} from './rail.js?v=2.3.1';
+import {R,unit,dot,tangent,distance,clamp,parameters,planRoute,evaluate} from './rail.js?v=2.4.0';
 const clonePoint=p=>({...p,n:p.n.slice()});
 export function trackStations(points){let s=0;return points.map((p,i)=>{if(i)s+=distance(points[i-1].n,p.n);return s;});}
 export function pointOnTrack(track,station){
@@ -10,12 +10,13 @@ export function pointOnTrack(track,station){
  return {...clonePoint(t<.5?a:b),n:unit(a.n.map((v,k)=>v*(1-t)+b.n[k]*t)),h:a.h*(1-t)+b.h*t,station:s,trackId:track.id};
 }
 export function nearestOnTrack(track,n){
- const ss=track.stations||trackStations(track.points);let best=null;
+ const ss=track.stations||trackStations(track.points);let best=Infinity,station=0;
  for(let i=1;i<track.points.length;i++){
-  const a=track.points[i-1].n,b=track.points[i].n,d=b.map((v,k)=>v-a[k]),t=clamp(dot(n.map((v,k)=>v-a[k]),d)/Math.max(1e-20,dot(d,d)),0,1),q=unit(a.map((v,k)=>v+d[k]*t)),gap=distance(n,q);
-  if(!best||gap<best.gap)best={...pointOnTrack(track,ss[i-1]+t*(ss[i]-ss[i-1])),gap};
+  const a=track.points[i-1].n,b=track.points[i].n,dx=b[0]-a[0],dy=b[1]-a[1],dz=b[2]-a[2],t=clamp(((n[0]-a[0])*dx+(n[1]-a[1])*dy+(n[2]-a[2])*dz)/Math.max(1e-20,dx*dx+dy*dy+dz*dz),0,1);
+  const x=a[0]+dx*t,y=a[1]+dy*t,z=a[2]+dz*t,r=Math.hypot(x,y,z),gap=(x/r-n[0])**2+(y/r-n[1])**2+(z/r-n[2])**2;
+  if(gap<best){best=gap;station=ss[i-1]+t*(ss[i]-ss[i-1]);}
  }
- return best;
+ const q=pointOnTrack(track,station);return {...q,gap:distance(n,q.n)};
 }
 export function trackSlice(track,from,to){
  const ss=track.stations||trackStations(track.points),a=Math.min(from,to),b=Math.max(from,to),out=[pointOnTrack(track,a)];
@@ -61,22 +62,26 @@ function connectionDirection(endpoint,toward,network,incoming=false){
   for(const sign of[-1,1]){const d=projected.map(v=>v*sign),score=dot(d,desired);if(score>alignment){best=d;alignment=score;}}
  }return best;
 }
-function graphFor(network,start,end,p){
+function graphFor(network,start,end,p,corridor=[]){
  const tracks=network.tracks,portals=[],byTrack=new Map(tracks.map(t=>[t.id,[]]));
- const add=(point,attachments=[])=>{
+ const add=(point,attachments=[],force=false)=>{
   let q=portals.find(q=>distance(q.n,point.n)<.03&&Math.abs(q.h-point.h)<.03);
-  if(!q){q={id:portals.length,n:point.n,h:point.h,links:[],attachments:[]};portals.push(q);}
+  if(!q){if(!force&&portals.length>=Math.max(256,network.nodes.length+128))return null;q={id:portals.length,n:point.n,h:point.h,links:[],attachments:[]};portals.push(q);}
   for(const a of attachments)if(byTrack.has(a.trackId)&&!q.attachments.some(b=>b.trackId===a.trackId&&Math.abs(b.station-a.station)<.03)){q.attachments.push(a);byTrack.get(a.trackId).push({portal:q,station:a.station});}return q;
  };
- for(const n of network.nodes)add(n,n.attachments);
+ for(const n of network.nodes)add(n,n.attachments,true);
  for(const t of tracks){
   for(const e of[start,end]){const q=nearestOnTrack(t,e.n);for(const offset of[0,-1,1]){const station=clamp(q.station+offset*Math.max(p.minRadius*5,q.gap*2),0,t.stations.at(-1));add(pointOnTrack(t,station),[{trackId:t.id,station}]);}}
+  // Find joins along the terrain corridor as well as near its endpoints.
+  // This catches shared passes and central stretches of long, overlapping lines.
+  const stride=Math.max(1,Math.floor(corridor.length/64)),reach=Math.max(1500,Math.min(18000,distance(start.n,end.n)*.18));
+  for(let i=0;i<corridor.length;i+=stride){const q=nearestOnTrack(t,corridor[i].n);if(q.gap>reach)continue;for(const sign of[0,-1,1]){const station=clamp(q.station+sign*Math.max(p.minRadius*4,q.gap),0,t.stations.at(-1));add(pointOnTrack(t,station),[{trackId:t.id,station}]);}}
   const total=t.stations.at(-1),count=Math.max(1,Math.min(32,Math.ceil(80/tracks.length),Math.ceil(total/10000)));
   for(let j=0;j<=count;j++){const station=total*j/count;add(pointOnTrack(t,station),[{trackId:t.id,station}]);}
  }
  const exact=e=>{
-  const n=network.nodes.find(n=>n.id===e.nodeId);if(n)return add(n,n.attachments);
-  const t=tracks.find(t=>t.id===e.trackId);if(t)return add(pointOnTrack(t,e.station),[{trackId:t.id,station:e.station}]);return null;
+  const n=network.nodes.find(n=>n.id===e.nodeId);if(n)return add(n,n.attachments,true);
+  const t=tracks.find(t=>t.id===e.trackId);if(t)return add(pointOnTrack(t,e.station),[{trackId:t.id,station:e.station}],true);return null;
  };
  const ends=[exact(start),exact(end)];
  for(const track of tracks){
@@ -86,18 +91,38 @@ function graphFor(network,start,end,p){
    // Existing construction is free; distance and running time still count.
    const points=trackSlice(track,a.station,b.station);let cost=0;
    for(let j=1;j<points.length;j++){const ds=distance(points[j-1].n,points[j].n),v=Math.max(1,Math.min(p.speed/3.6,points[j].limit||p.speed/3.6));cost+=ds*(1+p.timeWeight*(p.speed/3.6/v-1));}
-   const part={trackId:track.id,from:a.station,to:b.station};a.portal.links.push({to:b.portal.id,cost,part});b.portal.links.push({to:a.portal.id,cost,part:{...part,from:part.to,to:part.from}});
+   const part={trackId:track.id,from:a.station,to:b.station},departure=tangent(points[0].n,points[1].n),arrival=tangent(points.at(-1).n,points.at(-2).n).map(v=>-v);a.portal.links.push({to:b.portal.id,cost,part,departure,arrival});b.portal.links.push({to:a.portal.id,cost,part:{...part,from:part.to,to:part.from},departure:arrival.map(v=>-v),arrival:departure.map(v=>-v)});
   }
  }
  return {portals,ends};
 }
-function shortest(graph,start,end){
- const {portals}=graph,cost=new Float64Array(portals.length).fill(Infinity),parent=new Array(portals.length),done=new Set();cost[start.id]=0;
+function shortestTree(graph,start){
+ const {portals}=graph,cost=new Float64Array(portals.length).fill(Infinity),parent=new Array(portals.length),first=new Array(portals.length),done=new Uint8Array(portals.length);cost[start.id]=0;
  for(let k=0;k<portals.length;k++){
-  let id=-1;for(let i=0;i<cost.length;i++)if(!done.has(i)&&(id<0||cost[i]<cost[id]))id=i;if(id<0||!Number.isFinite(cost[id]))return null;if(id===end.id)break;done.add(id);
-  for(const e of portals[id].links)if(cost[id]+e.cost<cost[e.to]){cost[e.to]=cost[id]+e.cost;parent[e.to]={id,part:e.part};}
+  let id=-1;for(let i=0;i<cost.length;i++)if(!done[i]&&(id<0||cost[i]<cost[id]))id=i;if(id<0||!Number.isFinite(cost[id]))break;done[id]=1;
+  for(const e of portals[id].links)if(cost[id]+e.cost<cost[e.to]){cost[e.to]=cost[id]+e.cost;parent[e.to]={id,edge:e};first[e.to]=id===start.id?e:first[id];}
+ }return {cost,parent,first};
+}
+function pathFrom(tree,start,end){
+ if(!Number.isFinite(tree.cost[end.id]))return null;const parts=[];
+ for(let id=end.id;id!==start.id;id=tree.parent[id].id){if(!tree.parent[id])return null;parts.push(tree.parent[id].edge.part);}return parts.reverse();
+}
+function networkCandidates(graph,start,end,p){
+ const weight=1+p.reusePreference,choices=(a,b)=>graph.portals.length<=320?graph.portals:graph.portals.map(q=>({q,rank:distance(a.n,q.n)*weight+distance(q.n,b.n)})).sort((a,b)=>a.rank-b.rank).slice(0,64).map(x=>x.q);
+ const starts=graph.ends[0]?[graph.ends[0]]:choices(start,end),ends=graph.ends[1]?[graph.ends[1]]:choices(end,start),out=[];
+ for(const a of starts){const ga=distance(start.n,a.n),tree=shortestTree(graph,a);
+  for(const b of ends){if(a===b||!tree.first[b.id])continue;const gb=distance(end.n,b.n),lower=(ga+gb)*weight+tree.cost[b.id],entry=tree.first[b.id].departure,exit=tree.parent[b.id].edge.arrival;
+   // Poorly aligned joins cost more to try, but remain candidates: a curved
+   // approach can work even when the straight chord is perpendicular.
+   const bend=(ga>20?1-dot(tangent(a.n,start.n).map(v=>-v),entry):0)+(gb>20?1-dot(tangent(b.n,end.n),exit):0);
+   out.push({a,b,tree,lower,rank:lower+Math.max(p.minRadius*8,Math.min(ga,gb)*.15)*bend,entry,exit});
+  }
  }
- if(!Number.isFinite(cost[end.id]))return null;const parts=[];for(let id=end.id;id!==start.id;id=parent[id].id){if(!parent[id])return null;parts.push(parent[id].part);}return {parts:parts.reverse(),cost:cost[end.id]};
+ out.sort((a,b)=>a.rank-b.rank);const selected=[],spacing=Math.max(1000,p.minRadius*4);
+ for(const c of out){if(selected.some(q=>distance(q.a.n,c.a.n)<spacing&&distance(q.b.n,c.b.n)<spacing))continue;
+  if(!graph.ends[0]&&selected.filter(q=>distance(q.a.n,c.a.n)<spacing).length>=3||!graph.ends[1]&&selected.filter(q=>distance(q.b.n,c.b.n)<spacing).length>=3)continue;
+  selected.push(c);if(selected.length===12)break;
+ }return selected;
 }
 function assemble(parts,network,world,p){
  const compact=[];for(const part of parts){const last=compact.at(-1);if(part.trackId&&part.trackId===last?.trackId&&Math.abs(last.to-part.from)<.03)last.to=part.to;else compact.push({...part});}parts=compact;
@@ -111,38 +136,65 @@ function assemble(parts,network,world,p){
  }
  const result=evaluate(points,world,p);return result?{...result,parts,parameters:p,networkScore:result.score+p.reusePreference*result.newLength}:null;
 }
-export async function planNetworkRoute(start,end,world,options={},network={tracks:[],nodes:[]},hooks={}){
+async function searchNetworkRoute(start,end,world,options={},network={tracks:[],nodes:[]},hooks={}){
  if(hooks.cancelled?.())throw Error('cancelled');
  if(!world(start.n).land||!world(end.n).land)return {error:'Both endpoints must be on land or existing track.'};
  if(distance(start.n,end.n)<20)return {error:'Choose points at least 20 m apart.'};
  const p=parameters(options),heights=[start.h??world(start.n).height,end.h??world(end.n).height],baseHooks={...hooks,endpointHeights:heights,endpointDirections:[connectionDirection(start,end,network),connectionDirection(end,start,network,true)]};
- let direct=null;
  if(!network.tracks.length){const r=await planRoute(start.n,end.n,world,p,baseHooks);return r.error?r:{...r,parts:[{points:r.points}]};}
- const graph=graphFor(network,start,end,p),choices=e=>graph.portals.map(q=>({q,d:distance(q.n,e.n)})).sort((a,b)=>a.d-b.d).filter((v,i,a)=>!a.slice(0,i).some(o=>distance(o.q.n,v.q.n)<Math.max(500,p.minRadius*3))).slice(0,6).map(v=>v.q);
- const starts=graph.ends[0]?[graph.ends[0]]:choices(start),ends=graph.ends[1]?[graph.ends[1]]:choices(end),candidates=[];
- for(const a of starts)for(const b of ends){if(a===b)continue;const path=shortest(graph,a,b);if(!path?.parts.length)continue;const first=path.parts[0],last=path.parts.at(-1),ta=network.tracks.find(t=>t.id===first.trackId),tb=network.tracks.find(t=>t.id===last.trackId),fa=trackSlice(ta,first.from,first.to),fb=trackSlice(tb,last.from,last.to);const ga=distance(start.n,a.n),gb=distance(end.n,b.n);if(ga>20&&dot(tangent(a.n,start.n).map(v=>-v),tangent(fa[0].n,fa[1].n))<.35||gb>20&&dot(tangent(b.n,end.n),tangent(fb.at(-1).n,fb.at(-2).n).map(v=>-v))<.35)continue;const lower=(ga+gb)*(1+p.reusePreference)+path.cost;candidates.push({a,b,path,lower});}
- candidates.sort((a,b)=>a.lower-b.lower);
- // A completely existing path needs no terrain search. Validate it first.
- for(const c of candidates.filter(c=>c.a===graph.ends[0]&&c.b===graph.ends[1])){const r=assemble(c.path.parts,network,world,p);if(r){direct=r;break;}}
- if(!direct||p.reusePreference===0||direct.length>distance(start.n,end.n)*1.1){const r=await planRoute(start.n,end.n,world,p,baseHooks);if(!r.error){const v={...r,parts:[{points:r.points}],networkScore:r.score+p.reusePreference*r.length};if(!direct||v.networkScore<direct.networkScore)direct=v;}else if(!candidates.length)return r;}
- if(hooks.cancelled?.())throw Error('cancelled');const cache=new Map();
- for(const c of candidates.slice(0,3)){
-  if(direct&&c.lower>direct.networkScore*1.05)continue;
-  hooks.progress?.('Connecting to existing track',0,1);
-  const reused=c.path.parts,firstTrack=network.tracks.find(t=>t.id===reused[0].trackId),lastTrack=network.tracks.find(t=>t.id===reused.at(-1).trackId),first=trackSlice(firstTrack,reused[0].from,reused[0].to),last=trackSlice(lastTrack,reused.at(-1).from,reused.at(-1).to),parts=[];let valid=true;
-  for(const side of[0,1]){
-   const endpoint=side?end:start,portal=side?c.b:c.a,gap=distance(endpoint.n,portal.n);if(gap<.01)continue;
-   if(gap<20){valid=false;break;}
-   const direction=side?tangent(last.at(-1).n,last.at(-2).n).map(v=>-v):tangent(first[0].n,first[1].n),key=side+':'+portal.id+':'+direction.map(v=>v.toFixed(5)).join(',');
-   if(!cache.has(key)){
-    const a=side?portal:endpoint,b=side?endpoint:portal;
-    const r=await planRoute(a.n,b.n,world,p,{...hooks,endpointHeights:[a.h??world(a.n).height,b.h??world(b.n).height],endpointDirections:side?[direction,baseHooks.endpointDirections[1]]:[baseHooks.endpointDirections[0],direction]});cache.set(key,r);
-   }
-   const r=cache.get(key);if(r.error){valid=false;break;}if(side)parts.push(...reused,{points:r.points});else parts.push({points:r.points});
-  }
-  if(!valid)continue;if(!parts.some(part=>part.trackId))parts.push(...reused);
-  const r=assemble(parts,network,world,p);if(r&&(!direct||r.networkScore<direct.networkScore))direct=r;
-  await new Promise(resolve=>setTimeout(resolve,0));if(hooks.cancelled?.())throw Error('cancelled');
+ let direct=null,terrain=null;const initial=graphFor(network,start,end,p);
+ if(initial.ends.every(Boolean)){
+  const parts=pathFrom(shortestTree(initial,initial.ends[0]),...initial.ends);if(parts?.length)direct=assemble(parts,network,world,p);
+  if(direct&&p.reusePreference>0&&direct.length<=distance(start.n,end.n)*1.1)return direct;
  }
+ terrain=await planRoute(start.n,end.n,world,p,baseHooks);
+ if(!terrain.error){const r={...terrain,parts:[{points:terrain.points}],networkScore:terrain.score+p.reusePreference*terrain.length};if(!direct||r.networkScore<direct.networkScore)direct=r;}
+ if(hooks.cancelled?.())throw Error('cancelled');
+ const corridor=terrain.error?[]:terrain.points,graph=corridor.length?graphFor(network,start,end,p,corridor):initial,candidates=networkCandidates(graph,start,end,p),cache=new Map(),failed=[];let trials=0;
+ const guideFor=(portal,side)=>{
+  if(!corridor.length)return null;let index=0,gap=Infinity;
+  for(let i=0;i<corridor.length;i++){const d=corridor[i].n.reduce((sum,v,k)=>sum+(v-portal.n[k])**2,0);if(d<gap){gap=d;index=i;}}
+  const ps=side?[portal.n,...corridor.slice(index).map(p=>p.n)]:[...corridor.slice(0,index+1).map(p=>p.n),portal.n],stride=Math.max(1,Math.ceil(ps.length/60)),guide=ps.filter((_,i)=>i%stride===0||i===ps.length-1);
+  const clean=[guide[0]];for(let i=1;i<guide.length;i++){if(distance(guide[i],clean.at(-1))>20)clean.push(guide[i]);else if(i===guide.length-1){if(clean.length>1)clean.pop();clean.push(guide[i]);}}return clean;
+ };
+ const attempt=async(c,quickOnly)=>{
+  if(hooks.cancelled?.())throw Error('cancelled');
+  if(direct&&c.lower>direct.networkScore*1.05)return true;
+  hooks.progress?.(quickOnly?'Testing shared track connections':'Refining shared track connections',++trials,16);
+  const reused=pathFrom(c.tree,c.a,c.b),parts=[];
+  for(const side of[0,1]){
+   const endpoint=side?end:start,portal=side?c.b:c.a,gap=distance(endpoint.n,portal.n);if(gap<.01)continue;if(gap<20)return false;
+   const direction=side?c.exit:c.entry,key=side+':'+portal.id+':'+direction.map(v=>v.toFixed(5)).join(','),cached=cache.get(key);
+   if(!cached||cached.result.error&&!quickOnly&&!cached.full){
+    const a=side?portal:endpoint,b=side?endpoint:portal;
+    const result=await planRoute(a.n,b.n,world,p,{...hooks,quickOnly,guide:guideFor(portal,side),endpointHeights:[a.h??world(a.n).height,b.h??world(b.n).height],endpointDirections:side?[direction,baseHooks.endpointDirections[1]]:[baseHooks.endpointDirections[0],direction]});cache.set(key,{result,full:!quickOnly});
+   }
+   const r=cache.get(key).result;if(r.error)return false;if(side)parts.push(...reused,{points:r.points});else parts.push({points:r.points});
+  }
+  if(!parts.some(part=>part.trackId))parts.push(...reused);
+  const r=assemble(parts,network,world,p);if(r&&(!direct||r.networkScore<direct.networkScore))direct=r;return !!r;
+ };
+ for(const c of candidates){if(!await attempt(c,true))failed.push(c);await new Promise(resolve=>setTimeout(resolve,0));}
+ // Broaden cheaply first, then spend full terrain searches on several distinct
+ // promising joins. Failed early pairs no longer consume the whole reuse search.
+ for(const c of failed.slice(0,4)){await attempt(c,false);await new Promise(resolve=>setTimeout(resolve,0));}
+ if(hooks.cancelled?.())throw Error('cancelled');
  return direct||{error:'No route found within these limits, including connections to existing track. Try different endpoints or routing limits.'};
+}
+
+// There are no directional city/track constraints yet. Run the approximate
+// construction search in a geographic order so click order cannot change it.
+// Reverse only traversal and the acceleration/braking envelope for the caller.
+export async function planNetworkRoute(start,end,world,options={},network={tracks:[],nodes:[]},hooks={}){
+ const order=start.n[0]-end.n[0]||start.n[1]-end.n[1]||start.n[2]-end.n[2],backwards=order>0;
+ const r=await searchNetworkRoute(backwards?end:start,backwards?start:end,world,options,network,hooks);
+ if(!backwards||r.error)return r;
+ if(hooks.cancelled?.())throw Error('cancelled');
+ const p=parameters(options),parts=r.parts.toReversed().map(part=>part.trackId?{...part,from:part.to,to:part.from}:{points:part.points.toReversed().map(clonePoint)}),reverse=assemble(parts,network,world,p);
+ if(!reverse)throw Error('Could not validate the reverse traversal of the chosen alignment.');
+ // Construction quantities belong to the alignment, not its traversal. Retain
+ // the same integration samples rather than changing their endpoint convention.
+ const quantities={};for(const key of['length','volume','cut','fill','maxGrade','maxWork','minRadius','bridgeLength','maxBridgeHeight','bridgeCost','reusedLength','newLength'])quantities[key]=r[key];
+ const score=reverse.score+p.earthworkCost*(r.volume-reverse.volume)+r.bridgeCost-reverse.bridgeCost+(r.score-(r.engineeringScore??r.score));
+ return {...r,...reverse,...quantities,score,networkScore:score+p.reusePreference*r.newLength};
 }

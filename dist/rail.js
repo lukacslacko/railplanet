@@ -1,6 +1,6 @@
 // Railway metrics, engineering validation, and a continuous-heading fallback.
-import {R} from './scale.js?v=2.3.1';
-export {R} from './scale.js?v=2.3.1';
+import {R} from './scale.js?v=2.4.0';
+export {R} from './scale.js?v=2.4.0';
 export const DEFAULTS=Object.freeze({speed:120,maxGrade:.03,minRadius:300,maxEarthwork:60,earthworkCost:.025,timeWeight:.6,maxBridge:300,bridgeCost:5,passPreference:1,reusePreference:1});
 export const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
 export const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
@@ -239,10 +239,10 @@ export async function planRoute(start,goal,world,options={},hooks={}){
   const p=parameters(options);
   if(!world(start).land||!world(goal).land)return {error:'Both endpoints must be on land.'};
   if(distance(start,goal)<20)return {error:'Choose points at least 20 m apart.'};
-  const {hierarchicalRoute,improvePasses}=await import('./rail-corridor.js?v=2.3.1');
+  const {hierarchicalRoute,improvePasses}=await import('./rail-corridor.js?v=2.4.0');
   const result=await hierarchicalRoute(start,goal,world,p,hooks);
   if(result)return {...result,parameters:p};
   // A continuous-heading fallback is useful for short, unusually tight corridors.
-  if(distance(start,goal)<20000&&!hooks.endpointDirections?.some(Boolean)&&!hooks.endpointHeights?.some((h,i)=>Number.isFinite(h)&&Math.abs(h-world(i?goal:start).height)>.01)){const fallback=await hybridRoute(start,goal,world,p,hooks);if(!fallback.error)return improvePasses(fallback,start,goal,world,p,hooks);}
+  if(!hooks.quickOnly&&distance(start,goal)<20000&&!hooks.endpointDirections?.some(Boolean)&&!hooks.endpointHeights?.some((h,i)=>Number.isFinite(h)&&Math.abs(h-world(i?goal:start).height)>.01)){const fallback=await hybridRoute(start,goal,world,p,hooks);if(!fallback.error)return improvePasses(fallback,start,goal,world,p,hooks);}
   return {error:'No route found within these limits. Land may be disconnected, or the grade/cut/bridge limits may need increasing. The bounded search does not prove a route is impossible.'};
 }

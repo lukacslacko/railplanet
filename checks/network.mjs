@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import {R,unit,distance,planRoute,DEFAULTS} from '../dist/rail.js?v=2.3.1';
-import {RailNetwork,planNetworkRoute,nearestOnTrack,pointOnTrack,trackSlice} from '../dist/rail-network.js';
+import {R,unit,distance,planRoute,DEFAULTS} from '../dist/rail.js?v=2.4.0';
+import {RailNetwork,planNetworkRoute,nearestOnTrack,pointOnTrack,trackSlice,trackStations} from '../dist/rail-network.js';
 import {snapToNetwork,projectTrackPoint} from '../dist/rail-snap.js';
 import {RailwayRenderer} from '../dist/rail-render.js';
 const at=(x,y=0)=>unit([1,y/R,x/R]),flat=()=>({land:true,height:100}),options={passPreference:0},end=(x,y=0)=>({n:at(x,y),h:100}),net=new RailNetwork();
@@ -17,6 +17,7 @@ const bridgeWorld=n=>{const x=Math.atan2(n[2],n[0])*R;return {land:true,height:1
 const elevated=await planNetworkRoute({n:at(0)},{n:at(6000)},bridgeWorld,options,bridgeNet);assert(elevated.bridgeLength>100);bridgeNet.add(elevated);
 const elevatedTrack=bridgeNet.tracks[0],onBridge=pointOnTrack(elevatedTrack,3000),onEnd=pointOnTrack(elevatedTrack,4500),bridgeReuse=await planNetworkRoute(onBridge,onEnd,bridgeWorld,options,bridgeNet);
 assert(!bridgeReuse.error,bridgeReuse.error);assert(bridgeReuse.reusedLength>1499);assert(bridgeReuse.newLength<.01);assert(Math.abs(bridgeReuse.points[0].h-onBridge.h)<1e-8);assert(onBridge.h-bridgeWorld(onBridge.n).height>100,'snapped bridge endpoint must use the deck, not the valley floor');assert.equal(bridgeReuse.volume,0);
+const elevatedBackwards=await planNetworkRoute({n:at(6000)},{n:at(0)},bridgeWorld,options,new RailNetwork());assert(!elevatedBackwards.error);assert.equal(elevatedBackwards.volume,elevated.volume);assert.equal(elevatedBackwards.bridgeLength,elevated.bridgeLength);assert.equal(elevatedBackwards.maxWork,elevated.maxWork);
 console.log('PASS exact full/partial reuse, fixed elevated bridge heights, running-time cost, and no duplicate construction.');
 net.undo();assert.equal(net.routes.length,2);net.undo();assert.equal(net.tracks.length,1);assert.equal(net.nodes.length,2);assert.equal(net.length,snapshot.tracks[0].stations.at(-1));
 const replacement=await planNetworkRoute(end(1000,1000),end(17000,1000),flat,options,net.beforeLast());net.add(replacement,true);assert.equal(net.routes.length,1);assert.equal(net.tracks.length,1);net.undo();assert.equal(net.routes.length,0);
@@ -29,6 +30,29 @@ const branches=new RailNetwork();branches.add(first);const trunk=branches.tracks
 const origin=branches.nodes[0],destination=branches.nodes.find(n=>distance(n.n,at(16000,4000))<.01),through=await planNetworkRoute({...origin,nodeId:origin.id},{...destination,nodeId:destination.id},flat,options,branches);
 assert(!through.error,through.error);assert(through.reusedLength>15000);assert(through.newLength<.01,'the graph should traverse a shared interior junction');assert(through.minRadius>=DEFAULTS.minRadius-.1,'a new branch must join with a feasible tangent');
 console.log('PASS through routing over multiple existing tracks via a smooth shared junction.');
+// Graph traversal and station interpolation must work in both travel directions.
+const reverseFull=await planNetworkRoute({...b,nodeId:b.id},{...a,nodeId:a.id},flat,options,{tracks:snapshot.tracks,nodes:snapshot.nodes});
+assert(!reverseFull.error,reverseFull.error);assert(reverseFull.newLength<.01);assert(Math.abs(reverseFull.length-first.length)<.01);
+const reversePartial=await planNetworkRoute(partialEnd,partialStart,flat,options,{tracks:snapshot.tracks,nodes:snapshot.nodes});assert(!reversePartial.error);assert(reversePartial.newLength<.01);assert(Math.abs(reversePartial.length-10000)<.01);
+const reverseJunction=await planNetworkRoute({...destination,nodeId:destination.id},{...origin,nodeId:origin.id},flat,options,branches);assert(!reverseJunction.error);assert(reverseJunction.newLength<.01);assert(Math.abs(reverseJunction.length-through.length)<.01);
+const oldTrack=snapshot.tracks[0],total=oldTrack.stations.at(-1),reversedTrack={...oldTrack,points:oldTrack.points.toReversed(),stations:trackStations(oldTrack.points.toReversed())},reversedNodes=snapshot.nodes.map(n=>({...n,attachments:n.attachments.map(a=>({...a,station:total-a.station}))}));
+for(const [start,end]of[[endPoint(2000,1000),endPoint(18000,1000)],[endPoint(18000,1000),endPoint(2000,1000)]]){
+ const result=await planNetworkRoute(start,end,flat,options,{tracks:[reversedTrack],nodes:reversedNodes});assert(!result.error);assert(result.reusedLength>10000,'stored track order must not prevent reverse reuse');assert(result.newLength<6000);
+}
+function endPoint(x,y){return {n:at(x,y),h:100};}
+console.log('PASS reverse full/partial/junction reuse and reverse track construction order.');
+// The former three-pair search reused only 39.7 km in this fixture. Nearby
+// perpendicular approaches need additional joining positions, in both directions.
+const longNet=new RailNetwork();longNet.add(await planNetworkRoute(endPoint(0,0),endPoint(100000,0),flat,options,longNet));
+for(const pair of[[endPoint(20000,10000),endPoint(80000,-10000)],[endPoint(80000,-10000),endPoint(20000,10000)]]){
+ const r=await planNetworkRoute(...pair,flat,options,longNet);assert(!r.error,r.error);assert(r.reusedLength>45000,'the wider search should discover more of the shared trunk');assert(r.newLength<27000);assert(r.length<distance(pair[0].n,pair[1].n)*1.2);assert(r.minRadius>=DEFAULTS.minRadius-.1);
+}
+const forwardAlignment=await planNetworkRoute(endPoint(20000,10000),endPoint(80000,-10000),flat,options,longNet),backwardAlignment=await planNetworkRoute(endPoint(80000,-10000),endPoint(20000,10000),flat,options,longNet);
+assert.equal(forwardAlignment.points.length,backwardAlignment.points.length);for(let i=0;i<forwardAlignment.points.length;i++){const a=forwardAlignment.points[i],b=backwardAlignment.points.at(-1-i);assert(distance(a.n,b.n)<.001);assert(Math.abs(a.h-b.h)<1e-8,'construction elevations must be independent of click order');}
+assert(Math.abs(forwardAlignment.reusedLength-backwardAlignment.reusedLength)<.001);assert(Math.abs(forwardAlignment.volume-backwardAlignment.volume)<.01);
+console.log('PASS wider shared-corridor search and identical construction geometry in both click orders.');
+
+
 
 // Endpoint priority is pixel based; hidden far-side endpoints must not steal it.
 const t={id:'snap',points:[{n:at(0),h:100},{n:at(1000),h:200}],stations:[0,1000]},node={id:'endpoint',n:at(0),h:100,attachments:[]},sn={tracks:[t],nodes:[node]},project=p=>({x:Math.atan2(p.n[2],p.n[0])*R/10,y:0,w:1});
